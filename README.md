@@ -20,6 +20,20 @@ Each announcement is followed by a second message containing the bare trailer UR
 Discord renders a real YouTube player rather than a plain link. That follow-up carries
 the same movie name and poster avatar as the announcement, so the pair reads as one post.
 
+### Finding a trailer
+
+Trailers come from TMDB, which is missing them for plenty of older or smaller films.
+When TMDB has nothing, the app searches for `<Title> (<Year>) official trailer` — first
+on YouTube, then via Google's "I'm Feeling Lucky" — and takes the top hit. There's also
+a **Find** button beside the Trailer URL field to trigger it by hand.
+
+Whatever the route, what gets stored and posted is always a canonical
+`youtube.com/watch?v=…`, **never** the search or redirect URL — Discord only renders a
+player for a real YouTube link. The same applies to anything you paste: a `youtu.be`
+share link, a shorts link, a URL with a timestamp, or a Google lucky link is followed
+and turned into the plain watch URL. Anything the search gets wrong you can just
+overwrite by hand.
+
 The **end time is filled in from the movie's TMDB runtime** — pick a movie and a start
 time and the Ends field populates itself (a 2h 35m film starting at 7:00 PM ends at
 9:35 PM). Moving the start carries the end along with it, keeping whatever duration is

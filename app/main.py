@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from . import colors, discord, scheduler, store, tmdb, updater
+from . import colors, discord, scheduler, store, tmdb, trailers, updater
 from .config import STATIC_DIR, TEMPLATES_DIR, TMDB_API_KEY_URL, poster_url
 from .db import get_settings, init_db, save_settings
 
@@ -225,6 +225,31 @@ async def api_tmdb_movie(tmdb_id: int):
     return await tmdb.get_movie(tmdb_id)
 
 
+@app.get("/api/trailer/find")
+async def api_find_trailer(title: str, year: str | None = None):
+    """Look a trailer up on demand, for the 'Find trailer' button."""
+    if not title.strip():
+        raise HTTPException(400, "Give a movie title to search for.")
+    url = await trailers.find_trailer(title.strip(), year)
+    return {
+        "trailer_url": url,
+        "query": trailers.search_query(title.strip(), year),
+        "message": "Found a trailer." if url else "Couldn't find a trailer for that.",
+    }
+
+
+async def _resolve_trailer(pasted: str | None, movie: dict[str, Any]) -> str | None:
+    """A hand-entered URL wins, but is canonicalised first.
+
+    Discord only renders a player for a real youtube.com/watch link, so a share
+    link, a shorts link, or a Google 'I'm feeling lucky' URL is followed and
+    turned into one rather than posted as-is.
+    """
+    if pasted:
+        return await trailers.normalize(pasted)
+    return movie.get("trailer_url")
+
+
 # ==========================================================================
 # People & theaters API
 # ==========================================================================
@@ -308,7 +333,7 @@ async def api_create_release(payload: ReleaseIn):
         **movie,
         "drop_at": payload.drop_at,
         "remind": int(payload.remind),
-        "trailer_url": payload.trailer_url or movie.get("trailer_url"),
+        "trailer_url": await _resolve_trailer(payload.trailer_url, movie),
         "accent_color": await colors.average_color_from_url(
             poster_url(movie.get("poster_path"), "w185")
         ),
@@ -357,7 +382,7 @@ async def api_update_release(release_id: int, payload: ReleaseIn):
         **movie,
         "drop_at": payload.drop_at,
         "remind": int(payload.remind),
-        "trailer_url": payload.trailer_url or movie.get("trailer_url"),
+        "trailer_url": await _resolve_trailer(payload.trailer_url, movie),
         # Only re-derive the colour when the poster actually changed.
         "accent_color": (
             await colors.average_color_from_url(poster_url(movie.get("poster_path"), "w185"))
@@ -430,7 +455,7 @@ async def _showing_record(payload: ShowingIn) -> dict[str, Any]:
         "title": movie["title"],
         "poster_path": movie["poster_path"],
         "backdrop_path": movie["backdrop_path"],
-        "trailer_url": payload.trailer_url or movie.get("trailer_url"),
+        "trailer_url": await _resolve_trailer(payload.trailer_url, movie),
         "accent_color": await colors.average_color_from_url(
             poster_url(movie.get("poster_path"), "w185")
         ),

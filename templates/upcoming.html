@@ -43,7 +43,10 @@
     </div>
     <div class="field">
       <label for="trailer-url">Trailer URL</label>
-      <input type="text" id="trailer-url" placeholder="https://www.youtube.com/watch?v=…">
+      <div class="input-with-add">
+        <input type="text" id="trailer-url" placeholder="https://www.youtube.com/watch?v=…">
+        <button type="button" class="secondary" id="find-trailer">Find</button>
+      </div>
     </div>
   </div>
 
@@ -275,6 +278,17 @@ function payload() {
     post_now: $('post-now').checked,
   };
 }
+
+$('find-trailer').addEventListener('click', (e) => busy(e.target, '…', async () => {
+  const title = picker.movie ? picker.movie.title : $('movie-search').value.trim();
+  if (!title) throw new Error('Pick a movie first.');
+  const year = picker.movie && picker.movie.release_date
+    ? picker.movie.release_date.slice(0, 4) : '';
+  const res = await api('GET',
+    `/api/trailer/find?title=${encodeURIComponent(title)}&year=${encodeURIComponent(year)}`);
+  if (res.trailer_url) $('trailer-url').value = res.trailer_url;
+  toast(res.message, res.trailer_url ? 'ok' : 'warn');
+}));
 
 $('reset-btn').addEventListener('click', () => {
   picker.reset();

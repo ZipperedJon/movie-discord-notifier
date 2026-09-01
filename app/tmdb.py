@@ -4,6 +4,7 @@ from typing import Any
 
 import httpx
 
+from . import trailers
 from .config import TMDB_API_BASE, poster_url
 from .db import get_settings
 
@@ -82,22 +83,36 @@ def _pick_trailer(videos: dict[str, Any]) -> str | None:
     return f"https://www.youtube.com/watch?v={best['key']}"
 
 
-async def get_movie(tmdb_id: int) -> dict[str, Any]:
-    """Full detail block used to build the Discord posts."""
+async def get_movie(tmdb_id: int, *, find_trailer: bool = True) -> dict[str, Any]:
+    """Full detail block used to build the Discord posts.
+
+    TMDB is missing a trailer for plenty of older or smaller films. When it is,
+    fall back to searching for one so the post still gets a player.
+    """
     data = await _get(f"/movie/{tmdb_id}", {"append_to_response": "videos"})
+    title = data.get("title") or data.get("original_title") or "Untitled"
+    release_date = data.get("release_date") or None
+
+    trailer_url = _pick_trailer(data.get("videos") or {})
+    trailer_source = "tmdb" if trailer_url else None
+    if not trailer_url and find_trailer:
+        trailer_url = await trailers.find_trailer(title, (release_date or "")[:4] or None)
+        trailer_source = "search" if trailer_url else None
+
     return {
         "tmdb_id": data["id"],
-        "title": data.get("title") or data.get("original_title") or "Untitled",
+        "title": title,
         "tagline": data.get("tagline") or None,
         "overview": data.get("overview") or None,
-        "release_date": data.get("release_date") or None,
+        "release_date": release_date,
         "genres": ", ".join(g["name"] for g in data.get("genres", [])) or None,
         "studios": ", ".join(c["name"] for c in data.get("production_companies", [])) or None,
         "budget": data.get("budget") or None,
         "runtime": data.get("runtime") or None,
         "poster_path": data.get("poster_path"),
         "backdrop_path": data.get("backdrop_path"),
-        "trailer_url": _pick_trailer(data.get("videos") or {}),
+        "trailer_url": trailer_url,
+        "trailer_source": trailer_source,
         "homepage": f"https://www.themoviedb.org/movie/{data['id']}",
     }
 
