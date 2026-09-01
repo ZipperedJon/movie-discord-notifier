@@ -132,7 +132,8 @@ fi
 if [ -n "$SRC" ] && [ "$SRC" != "$APP_DIR" ]; then
   say "Installing from local checkout: $SRC"
   mkdir -p "$APP_DIR"
-  tar -C "$SRC" --exclude=.git --exclude=data --exclude=.venv -cf - . | tar -C "$APP_DIR" -xf -
+  # .git is copied on purpose — self-update needs a real checkout to pull into.
+  tar -C "$SRC" --exclude=data --exclude=.venv -cf - . | tar -C "$APP_DIR" -xf -
 elif [ -d "$APP_DIR/.git" ]; then
   say "Updating existing install in $APP_DIR"
   git -C "$APP_DIR" fetch --quiet origin "$BRANCH"
@@ -198,10 +199,11 @@ User=${RUN_USER}
 Group=${RUN_USER}
 WorkingDirectory=${APP_DIR}
 ExecStart=${APP_DIR}/.venv/bin/python run.py --host ${HOST} --port ${PORT}
-Restart=on-failure
+# always, not on-failure: self-update finishes by exiting 0 so systemd brings
+# the app back up on the new code.
+Restart=always
 RestartSec=5
 
-# The app only needs to write its own data/ directory.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
@@ -209,7 +211,8 @@ ProtectHome=true
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
-ReadWritePaths=${APP_DIR}/data
+# The whole directory, not just data/: updating runs git and pip in here.
+ReadWritePaths=${APP_DIR}
 
 [Install]
 WantedBy=multi-user.target

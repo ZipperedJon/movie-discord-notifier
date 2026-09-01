@@ -95,6 +95,9 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "upcoming_use_primary": True,
     "upcoming_webhook_url": "",
     "upcoming_is_thread": False,
+    "auto_update": True,
+    "update_interval_hours": 6,
+    "last_update_check": "",
 }
 
 
@@ -128,6 +131,9 @@ MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("showings", "message_id", "TEXT"),
     ("showings", "runtime", "INTEGER"),
     ("showing_attendees", "dropped", "INTEGER NOT NULL DEFAULT 0"),
+    # The trailer follow-up message, so an edit can update or replace it.
+    ("showings", "trailer_message_id", "TEXT"),
+    ("ticket_releases", "trailer_message_id", "TEXT"),
 )
 
 

@@ -11,10 +11,13 @@ import asyncio
 import logging
 import time
 
-from . import discord, store
+from . import discord, store, updater
 from .config import SCHEDULER_INTERVAL_SECONDS
+from .db import get_settings
 
 log = logging.getLogger("scheduler")
+
+_last_update_check = 0.0
 
 
 async def run_once() -> None:
@@ -45,6 +48,25 @@ async def run_once() -> None:
             log.warning("Showing reminder for %s failed: %s", showing["title"], exc)
 
 
+async def maybe_auto_update() -> None:
+    """Check GitHub on the configured interval, not on every minute-long pass."""
+    global _last_update_check
+
+    hours = get_settings().get("update_interval_hours") or 6
+    due_after = max(1, int(hours)) * 3600
+    now = time.monotonic()
+
+    # Skip the very first pass so a restart loop can never hammer GitHub.
+    if _last_update_check == 0.0:
+        _last_update_check = now
+        return
+    if now - _last_update_check < due_after:
+        return
+
+    _last_update_check = now
+    await updater.auto_update_once()
+
+
 async def loop() -> None:
     while True:
         try:
@@ -53,4 +75,12 @@ async def loop() -> None:
             raise
         except Exception:  # keep the loop alive through any unexpected error
             log.exception("Scheduler pass failed")
+
+        try:
+            await maybe_auto_update()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("Auto-update check failed")
+
         await asyncio.sleep(SCHEDULER_INTERVAL_SECONDS)

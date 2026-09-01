@@ -143,10 +143,25 @@ who's going — even swap the movie — and saving **edits the original Discord 
 place** via `PATCH /webhooks/{id}/{token}/messages/{message_id}`. Same message, same
 thread, no duplicate post. The trailer is never re-sent, since it's already in the thread.
 
-If that edit can't go through (the message was deleted in Discord, say), the app posts
+The trailer follow-up is kept in step too — change the trailer and that message is
+edited, add one and it gets posted, remove one and it is deleted.
+
+If the edit can't go through (the message was deleted in Discord, say), the app posts
 the update **into the same thread** instead of opening a new one, and remembers the new
 message so the next edit targets that. An entry that was never posted just gets posted
 fresh. Untick **Update Discord** to save locally without touching the channel.
+
+### Swapping the movie re-posts
+
+Discord fixes a webhook message's **name and avatar when it is created** — no edit can
+change them. So if an edit could only ever patch the body, a swapped movie would keep
+the old film's name and poster forever.
+
+Picking a different movie therefore ticks **Re-post instead of editing**: the old post
+(and its thread) is deleted and a fresh one goes up, so the name, avatar, thread title,
+embed and trailer all match the new movie. You can tick it by hand for the same movie
+too. The trade-off is that reactions and replies on the old thread go with it — leave
+it unticked to keep the thread and accept a stale name on the message.
 
 ### Unsaved changes are hard to miss
 
@@ -169,6 +184,22 @@ Eli - @Eli
 
 Tick them again and the strike disappears. Under the hood the row is kept and flagged
 `dropped`, never deleted.
+
+## Keeping it up to date
+
+The app updates itself. It checks GitHub every few hours and, if **Update
+automatically** is on (it is by default), pulls the new code and restarts —
+no SSH, no reinstall. Settings → **Updates** shows the installed commit, has a
+**Check for updates** button, and lets you turn auto-update off or change the interval.
+
+Updates only touch code. `data/app.db` — your key, webhooks, people, movies — is never
+modified, and the schema migrates itself on the way up.
+
+Under the hood it is `git fetch` + `git reset --hard origin/main`, then a dependency
+install, then the process exits so systemd restarts it on the new code. That reset
+discards local edits to the install directory, so if you want to hack on your copy,
+turn auto-update off. Updating needs a git checkout the service user can write, which
+is what `install.sh` produces; a copy without `.git` says so instead of failing oddly.
 
 ## Reminders
 

@@ -144,6 +144,14 @@ button.dirty:hover, .btn.dirty:hover { background: #45bd70; }
 tr.dirty td { background: rgba(59, 165, 93, .07); }
 tr.dirty td:first-child { box-shadow: inset 3px 0 0 var(--green); }
 
+.update-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+  background: var(--bg-3); border: 1px solid var(--line);
+  border-radius: 8px; padding: 14px;
+}
+.update-row code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+
 .unsaved-note {
   display: none; align-items: center; gap: 7px;
   color: var(--green); font-size: 13px; font-weight: 600;

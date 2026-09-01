@@ -55,6 +55,16 @@
              {% else %}Posts it for the first time.{% endif %}</small>
     </span>
   </label>
+  {% if release.message_id %}
+  <label class="checkbox">
+    <input type="checkbox" id="force-repost">
+    <span class="cb-text">Re-post instead of editing
+      <small>Discord will not let an edit change the post's name or avatar, so swapping
+        the movie needs a fresh post. This deletes the current post (and its thread)
+        and puts up a new one. Ticked automatically when you pick a different movie.</small>
+    </span>
+  </label>
+  {% endif %}
 
   <div class="actions">
     <button type="button" id="save-btn">Save changes</button>
@@ -81,6 +91,8 @@ const picker = new MoviePicker({
   onSelect: (movie) => {
     $('trailer-url').value = movie.trailer_url || '';
     dirty.mark();
+    const repost = $('force-repost');
+    if (repost && movie.tmdb_id !== RELEASE.tmdb_id) repost.checked = true;
     toast(`Swapped to “${movie.title}”.`, 'ok');
   },
 });
@@ -97,13 +109,15 @@ $('save-btn').addEventListener('click', (e) => busy(e.target, 'Saving…', async
     trailer_url: $('trailer-url').value.trim() || null,
     remind: $('remind').checked,
     post_now: $('post-now').checked,
+    force_repost: Boolean($('force-repost') && $('force-repost').checked),
   });
 
   if (res.warning) {
     toast(`Saved, but Discord rejected the update: ${res.warning}`, 'warn', 9000);
   } else if (res.synced) {
-    toast(res.edited ? 'Saved and edited the Discord post.'
-                     : 'Saved and posted an update to the thread.', 'ok');
+    toast(res.reposted ? 'Saved and re-posted to Discord with the new name and avatar.'
+          : res.edited ? 'Saved and edited the Discord post.'
+                       : 'Saved and posted an update to the thread.', 'ok');
   } else {
     toast('Saved. Discord not updated.', 'ok');
   }

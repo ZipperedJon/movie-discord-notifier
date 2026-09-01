@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from . import colors, discord, scheduler, store, tmdb
+from . import colors, discord, scheduler, store, tmdb, updater
 from .config import STATIC_DIR, TEMPLATES_DIR, TMDB_API_KEY_URL, poster_url
 from .db import get_settings, init_db, save_settings
 
@@ -153,6 +153,8 @@ class SettingsIn(BaseModel):
     upcoming_use_primary: bool = True
     upcoming_webhook_url: str = ""
     upcoming_is_thread: bool = False
+    auto_update: bool = True
+    update_interval_hours: int = Field(default=6, ge=1, le=168)
 
 
 @app.get("/api/settings")
@@ -181,6 +183,32 @@ async def api_test_webhook(kind: str):
         raise HTTPException(404, "Unknown webhook.")
     await discord.post_test(kind)
     return {"ok": True, "message": f"Test message sent to the {kind} webhook."}
+
+
+# ==========================================================================
+# Updates
+# ==========================================================================
+
+@app.get("/api/update/check")
+async def api_update_check():
+    return await updater.check()
+
+
+@app.post("/api/update/apply")
+async def api_update_apply():
+    result = await updater.apply()
+    if not result.get("ok"):
+        raise HTTPException(400, result.get("message", "Update failed."))
+    if result.get("restart_required"):
+        if updater.under_systemd():
+            updater.schedule_restart()
+            result["restarting"] = True
+        else:
+            result["restarting"] = False
+            result["message"] = (
+                f"{result['message']} Restart the app manually to load the new code."
+            )
+    return result
 
 
 # ==========================================================================
@@ -265,6 +293,7 @@ class ReleaseIn(BaseModel):
     trailer_url: str | None = None  # overridable; otherwise pulled from TMDB
     remind: bool = True
     post_now: bool = True
+    force_repost: bool = False
 
 
 @app.get("/api/releases")
@@ -337,19 +366,23 @@ async def api_update_release(release_id: int, payload: ReleaseIn):
         ),
     }
     release = store.update_release(release_id, updates)
+    repost = payload.force_repost or changed_movie
 
-    synced, edited, warning = False, False, None
+    synced, edited, reposted, warning = False, False, False, None
     if payload.post_now:
         try:
-            result = await discord.sync_ticket_release(release)
+            result = await discord.sync_ticket_release(release, repost=repost)
             store.mark_release_posted(release_id, result)
-            synced, edited = True, result.get("edited", False)
+            synced = True
+            edited = result.get("edited", False)
+            reposted = result.get("reposted", False)
+            warning = result.get("warning")
         except discord.DiscordError as exc:
             warning = str(exc)
 
     return {
         "release": store.get_release(release_id),
-        "synced": synced, "edited": edited, "warning": warning,
+        "synced": synced, "edited": edited, "reposted": reposted, "warning": warning,
     }
 
 
@@ -374,6 +407,7 @@ class ShowingIn(BaseModel):
     remind: bool = True
     remind_hours: int = 1
     post_now: bool = True
+    force_repost: bool = False
 
 
 @app.get("/api/showings")
@@ -469,18 +503,25 @@ async def api_update_showing(showing_id: int, payload: ShowingIn):
 
     showing = store.update_showing(showing_id, record, payload.attendee_ids)
 
-    synced, edited, warning = False, False, None
+    # Discord bakes a webhook message's name and avatar in at creation, so a
+    # different movie needs a fresh post for those to match.
+    repost = payload.force_repost or existing["tmdb_id"] != payload.tmdb_id
+
+    synced, edited, reposted, warning = False, False, False, None
     if payload.post_now:
         try:
-            result = await discord.sync_upcoming(showing)
+            result = await discord.sync_upcoming(showing, repost=repost)
             store.mark_showing_posted(showing_id, result)
-            synced, edited = True, result.get("edited", False)
+            synced = True
+            edited = result.get("edited", False)
+            reposted = result.get("reposted", False)
+            warning = result.get("warning")
         except discord.DiscordError as exc:
             warning = str(exc)
 
     return {
         "showing": store.get_showing(showing_id),
-        "synced": synced, "edited": edited, "warning": warning,
+        "synced": synced, "edited": edited, "reposted": reposted, "warning": warning,
     }
 
 

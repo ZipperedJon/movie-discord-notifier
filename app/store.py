@@ -157,9 +157,17 @@ def mark_release_posted(release_id: int, thread: dict[str, Any] | None = None) -
     with cursor() as cur:
         cur.execute(
             "UPDATE ticket_releases SET posted_at = datetime('now'), "
-            "thread_id = COALESCE(?, thread_id), message_id = COALESCE(?, message_id) "
+            "thread_id = COALESCE(?, thread_id), message_id = COALESCE(?, message_id), "
+            # Not COALESCE: a removed trailer means no message, and keeping the old
+            # id would leave us editing a message that is gone.
+            "trailer_message_id = ? "
             "WHERE id = ?",
-            (thread.get("thread_id"), thread.get("message_id"), release_id),
+            (
+                thread.get("thread_id"),
+                thread.get("message_id"),
+                thread.get("trailer_message_id"),
+                release_id,
+            ),
         )
 
 
@@ -286,9 +294,16 @@ def mark_showing_posted(showing_id: int, thread: dict[str, Any] | None = None) -
     with cursor() as cur:
         cur.execute(
             "UPDATE showings SET posted_at = datetime('now'), "
-            "thread_id = COALESCE(?, thread_id), message_id = COALESCE(?, message_id) "
+            "thread_id = COALESCE(?, thread_id), message_id = COALESCE(?, message_id), "
+            # Not COALESCE: see mark_release_posted.
+            "trailer_message_id = ? "
             "WHERE id = ?",
-            (thread.get("thread_id"), thread.get("message_id"), showing_id),
+            (
+                thread.get("thread_id"),
+                thread.get("message_id"),
+                thread.get("trailer_message_id"),
+                showing_id,
+            ),
         )
 
 

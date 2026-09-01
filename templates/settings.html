@@ -76,6 +76,38 @@
     </div>
   </div>
 
+  <div class="card">
+    <h3>🔄 Updates</h3>
+    <p class="hint">
+      Pulls the latest code from
+      <a href="https://github.com/ZipperedJon/movie-discord-notifier" target="_blank" rel="noopener">GitHub</a>
+      and restarts itself. Your database is never touched by an update.
+    </p>
+
+    <div class="update-row">
+      <div>
+        <div><strong>Installed:</strong> <code id="cur-ver">…</code></div>
+        <div id="upd-status" class="hint" style="margin:4px 0 0">Checking…</div>
+      </div>
+      <div class="actions" style="margin:0">
+        <button type="button" class="secondary" id="check-btn">Check for updates</button>
+        <button type="button" id="apply-btn" style="display:none">Update now</button>
+      </div>
+    </div>
+
+    <label class="checkbox" style="margin-top:14px">
+      <input type="checkbox" id="auto_update" {{ 'checked' if settings.auto_update }}>
+      <span class="cb-text">Update automatically
+        <small>Checks in the background and installs new versions without asking.</small>
+      </span>
+    </label>
+    <div class="field" style="max-width:260px">
+      <label for="update_interval_hours">Check every (hours)</label>
+      <input type="number" id="update_interval_hours" min="1" max="168" step="1"
+             value="{{ settings.update_interval_hours }}">
+    </div>
+  </div>
+
   <div class="actions">
     <button type="submit" id="save-btn">Save settings</button>
   </div>
@@ -107,8 +139,64 @@ function collect() {
     upcoming_use_primary: $('upcoming_use_primary').checked,
     upcoming_webhook_url: $('upcoming_webhook_url').value.trim(),
     upcoming_is_thread: $('upcoming_is_thread').checked,
+    auto_update: $('auto_update').checked,
+    update_interval_hours: Number($('update_interval_hours').value) || 6,
   };
 }
+
+// ---------------------------------------------------------------- Updates
+function renderUpdate(info) {
+  $('cur-ver').textContent = info.current_short || 'unknown';
+  $('upd-status').textContent = info.message || '';
+  const behind = Boolean(info.behind && info.can_update);
+  $('apply-btn').style.display = behind ? '' : 'none';
+  if (behind) {
+    $('upd-status').innerHTML =
+      `<span style="color:var(--green);font-weight:600">Update available:</span> ` +
+      `<code>${escapeHtml(info.latest_short || '')}</code>` +
+      (info.subject ? ` — ${escapeHtml(info.subject)}` : '');
+  }
+}
+
+async function checkUpdates(silent) {
+  try {
+    renderUpdate(await api('GET', '/api/update/check'));
+  } catch (err) {
+    $('upd-status').textContent = err.message;
+    if (!silent) toast(err.message, 'err');
+  }
+}
+
+$('check-btn').addEventListener('click', (e) =>
+  busy(e.target, 'Checking…', async () => {
+    const info = await api('GET', '/api/update/check');
+    renderUpdate(info);
+    toast(info.message || 'Checked.', info.behind ? 'warn' : 'ok');
+  }));
+
+$('apply-btn').addEventListener('click', (e) => {
+  if (!confirm('Update now? The app will restart, which takes a few seconds.')) return;
+  busy(e.target, 'Updating…', async () => {
+    const res = await api('POST', '/api/update/apply');
+    toast(res.message, 'ok', 9000);
+    if (res.restarting) {
+      $('upd-status').textContent = 'Restarting — this page will reload shortly…';
+      // Poll until the server answers again, then reload.
+      const waitForBoot = async (tries) => {
+        if (tries <= 0) return location.reload();
+        try {
+          await fetch('/api/settings', { cache: 'no-store' });
+          location.reload();
+        } catch {
+          setTimeout(() => waitForBoot(tries - 1), 1500);
+        }
+      };
+      setTimeout(() => waitForBoot(20), 3000);
+    }
+  });
+});
+
+checkUpdates(true);
 
 $('settings-form').addEventListener('submit', (e) => {
   e.preventDefault();

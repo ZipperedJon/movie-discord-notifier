@@ -196,6 +196,24 @@ async def edit_message(
         )
 
 
+async def delete_message(kind: str, message_id: str, thread_id: str | None = None) -> bool:
+    """Delete a message this webhook posted. True if it is gone (or already was).
+
+    Careful: in a Forum/Media channel the FIRST message is the thread starter, so
+    deleting it removes the whole thread along with any reactions and replies.
+    """
+    url, _ = resolve_webhook(kind)
+    params = {"thread_id": str(thread_id)} if thread_id else {}
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.delete(f"{url}/messages/{message_id}", params=params)
+
+    if resp.status_code in (200, 204, 404):
+        return True
+    log.warning("Could not delete message %s: %s %s", message_id, resp.status_code, resp.text[:200])
+    return False
+
+
 def _explain(resp: httpx.Response, is_thread: bool) -> str:
     """Turn Discord's terser errors into something actionable."""
     detail = resp.text[:400]
@@ -221,20 +239,47 @@ async def _post_trailer(
     thread_id: str | None,
     title: str,
     poster_path: str | None = None,
-) -> None:
+) -> dict[str, Any]:
     """Follow-up message carrying the bare URL so Discord renders the YouTube player.
 
     A masked [Trailer](url) link does not unfurl; a bare URL on its own does.
     Carries the same username AND poster avatar as the announcement, otherwise this
     message falls back to the webhook's default icon and looks like a different bot.
     """
-    await send(
+    return await send(
         kind,
         content=trailer_url,
         username=title,
         avatar_url=poster_url(poster_path, "w185"),
         thread_id=thread_id,
     )
+
+
+async def _sync_trailer(kind: str, record: dict[str, Any], thread_id: str | None) -> str | None:
+    """Bring the trailer follow-up in line with the record. Returns its message id.
+
+    Editing the existing message keeps it in place when only the URL changed; a
+    trailer added or removed after the fact is posted or deleted accordingly.
+    """
+    existing = record.get("trailer_message_id")
+    wanted = record.get("trailer_url")
+
+    if not wanted:
+        if existing:
+            await delete_message(kind, existing, thread_id)
+        return None
+
+    if existing:
+        try:
+            await edit_message(kind, existing, thread_id, content=wanted)
+            return existing
+        except DiscordError as exc:
+            log.warning("Editing the trailer message failed, reposting: %s", exc)
+
+    result = await _post_trailer(
+        kind, wanted, thread_id, record["title"], record.get("poster_path")
+    )
+    return result.get("message_id")
 
 
 # --------------------------------------------------------------------------
@@ -291,14 +336,16 @@ async def post_ticket_release(
         thread_name=title,
         thread_id=release.get("thread_id") if reuse_thread else None,
     )
+    result["trailer_message_id"] = None
     if release.get("trailer_url"):
-        await _post_trailer(
+        trailer = await _post_trailer(
             "tickets",
             release["trailer_url"],
             result["thread_id"],
             release["title"],
             release.get("poster_path"),
         )
+        result["trailer_message_id"] = trailer.get("message_id")
     return result
 
 
@@ -387,14 +434,16 @@ async def post_upcoming(
         thread_name=title,
         thread_id=showing.get("thread_id") if reuse_thread else None,
     )
+    result["trailer_message_id"] = None
     if showing.get("trailer_url"):
-        await _post_trailer(
+        trailer = await _post_trailer(
             "upcoming",
             showing["trailer_url"],
             result["thread_id"],
             showing["title"],
             showing.get("poster_path"),
         )
+        result["trailer_message_id"] = trailer.get("message_id")
     return result
 
 
@@ -408,17 +457,35 @@ async def post_upcoming(
 # --------------------------------------------------------------------------
 
 async def _sync(
-    kind: str, record: dict[str, Any], embed: dict[str, Any], full_post
+    kind: str,
+    record: dict[str, Any],
+    embed: dict[str, Any],
+    full_post,
+    *,
+    repost: bool = False,
 ) -> dict[str, Any]:
+    # A webhook message's username and avatar are fixed when it is created —
+    # PATCH cannot change them. So swapping the movie needs a brand new post,
+    # otherwise the old film's name and poster stay on the message forever.
+    if repost and record.get("message_id"):
+        warning = await _remove_old_post(kind, record)
+        # The old thread went with the old starter message, so post as if new —
+        # otherwise this would try to post into a thread that no longer exists.
+        fresh = await full_post({**record, "thread_id": None, "message_id": None})
+        return {**fresh, "edited": False, "reposted": True, "warning": warning}
+
     if record.get("message_id"):
         try:
             await edit_message(
                 kind, record["message_id"], record.get("thread_id"), embeds=[embed]
             )
+            trailer_id = await _sync_trailer(kind, record, record.get("thread_id"))
             return {
                 "thread_id": record.get("thread_id"),
                 "message_id": record["message_id"],
+                "trailer_message_id": trailer_id,
                 "edited": True,
+                "reposted": False,
             }
         except DiscordError as exc:
             log.warning("Editing %s failed, posting an update instead: %s", record["title"], exc)
@@ -431,17 +498,40 @@ async def _sync(
             avatar_url=poster_url(record.get("poster_path"), "w185"),
             thread_id=record["thread_id"],
         )
-        return {**result, "edited": False}
+        result["trailer_message_id"] = await _sync_trailer(kind, record, record["thread_id"])
+        return {**result, "edited": False, "reposted": False}
 
-    return {**await full_post(record), "edited": False}
-
-
-async def sync_ticket_release(release: dict[str, Any]) -> dict[str, Any]:
-    return await _sync("tickets", release, build_ticket_release(release), post_ticket_release)
+    return {**await full_post(record), "edited": False, "reposted": False}
 
 
-async def sync_upcoming(showing: dict[str, Any]) -> dict[str, Any]:
-    return await _sync("upcoming", showing, build_upcoming(showing), post_upcoming)
+async def _remove_old_post(kind: str, record: dict[str, Any]) -> str | None:
+    """Delete the previous announcement (and its trailer) before reposting."""
+    thread_id = record.get("thread_id")
+
+    if record.get("trailer_message_id"):
+        await delete_message(kind, record["trailer_message_id"], thread_id)
+
+    ok = await delete_message(kind, record["message_id"], thread_id)
+    if not ok:
+        return (
+            "The previous Discord post could not be deleted, so it may still be there "
+            "alongside the new one — remove it by hand if you don't want both."
+        )
+    return None
+
+
+async def sync_ticket_release(
+    release: dict[str, Any], *, repost: bool = False
+) -> dict[str, Any]:
+    return await _sync(
+        "tickets", release, build_ticket_release(release), post_ticket_release, repost=repost
+    )
+
+
+async def sync_upcoming(showing: dict[str, Any], *, repost: bool = False) -> dict[str, Any]:
+    return await _sync(
+        "upcoming", showing, build_upcoming(showing), post_upcoming, repost=repost
+    )
 
 
 async def post_test(kind: str) -> dict[str, Any]:
