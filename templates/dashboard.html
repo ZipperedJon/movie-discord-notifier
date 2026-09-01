@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · Movie Discord Notifier{% endblock %}
+
+{% block content %}
+<h1>Dashboard</h1>
+<p class="subtitle">Everything on the calendar, newest first.</p>
+
+{% if not configured %}
+<div class="card" style="border-color:var(--amber)">
+  <h3>⚙️ Finish setup</h3>
+  <p class="hint">Add a TMDB API key and at least one Discord webhook before adding movies.</p>
+  <div class="actions"><a class="btn" href="/settings">Open Settings</a></div>
+</div>
+{% endif %}
+
+<h2>🎟️ Ticket releases</h2>
+{% if releases %}
+  {% for r in releases[:8] %}
+  <div class="entry">
+    {% if r.poster_path %}<img src="{{ poster_url(r.poster_path, 'w185') }}" alt="">{% endif %}
+    <div class="e-body">
+      <h4>{{ r.title }}
+        {% if r.posted_at %}<span class="badge posted">Posted</span>
+        {% else %}<span class="badge pending">Not posted</span>{% endif %}
+      </h4>
+      <div class="e-meta">Tickets drop <strong data-when="{{ r.drop_at }}"></strong></div>
+      <div class="e-meta">{{ r.genres or '—' }}</div>
+    </div>
+  </div>
+  {% endfor %}
+  <div class="actions"><a href="/releases">Manage ticket releases →</a></div>
+{% else %}
+  <div class="empty">Nothing yet. <a href="/releases">Add a ticket release →</a></div>
+{% endif %}
+
+<h2>🎥 Upcoming movies</h2>
+{% if showings %}
+  {% for s in showings[:8] %}
+  <div class="entry">
+    {% if s.poster_path %}<img src="{{ poster_url(s.poster_path, 'w185') }}" alt="">{% endif %}
+    <div class="e-body">
+      <h4>{{ s.title }}
+        {% if s.posted_at %}<span class="badge posted">Posted</span>
+        {% else %}<span class="badge pending">Not posted</span>{% endif %}
+      </h4>
+      <div class="e-meta"><strong data-when="{{ s.start_at }}"></strong></div>
+      {% if s.theater_name %}<div class="e-meta">📍 {{ s.theater_name }}</div>{% endif %}
+      <div class="e-meta">👥
+        {% if s.attendees %}{{ s.attendees | map(attribute='name') | join(', ') }}{% else %}nobody yet{% endif %}
+        · 🎟️ {{ s.extra_tickets }} extra
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+  <div class="actions"><a href="/upcoming">Manage upcoming movies →</a></div>
+{% else %}
+  <div class="empty">Nothing yet. <a href="/upcoming">Add an upcoming movie →</a></div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll('[data-when]').forEach((el) => {
+  const epoch = Number(el.dataset.when);
+  el.textContent = `${epochToLocalString(epoch)} (${relativeTime(epoch)})`;
+});
+</script>
+{% endblock %}

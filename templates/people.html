@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}People &amp; Theaters · Movie Discord Notifier{% endblock %}
+
+{% block content %}
+<h1>People &amp; Theaters</h1>
+<p class="subtitle">Saved once, then picked from a list every time you add an upcoming movie.</p>
+
+<div class="card">
+  <h3>👥 People</h3>
+  <p class="hint">
+    The Discord ID is the numeric user ID, not the username — it becomes
+    <code>Jon - &lt;@123456789012345678&gt;</code> in the post. To copy one: Discord →
+    Settings → Advanced → Developer Mode, then right-click a user → Copy User ID.
+    Leave it blank for someone without Discord and they show as “No Discord”.
+  </p>
+
+  <div class="row">
+    <div class="field"><label for="p-name">Name</label>
+      <input type="text" id="p-name" placeholder="Jon"></div>
+    <div class="field"><label for="p-id">Discord ID (optional)</label>
+      <input type="text" id="p-id" placeholder="123456789012345678" inputmode="numeric"></div>
+  </div>
+  <div class="actions"><button type="button" id="add-person">Add person</button></div>
+
+  {% if people %}
+  <table style="margin-top:18px">
+    <thead><tr><th>Name</th><th>Discord ID</th><th>Preview</th><th class="right"></th></tr></thead>
+    <tbody>
+      {% for p in people %}
+      <tr data-person="{{ p.id }}">
+        <td><input type="text" class="f-name" value="{{ p.name }}"></td>
+        <td><input type="text" class="f-id" value="{{ p.discord_id or '' }}" placeholder="— none —"></td>
+        <td><code>{% if p.discord_id %}&lt;@{{ p.discord_id }}&gt;{% else %}No Discord{% endif %}</code></td>
+        <td class="right">
+          <button class="small secondary" data-action="save">Save</button>
+          <button class="small danger" data-action="delete">Delete</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty" style="margin-top:18px">No people yet.</div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>📍 Theaters</h3>
+  <p class="hint">Posted as <code>Name, Address</code> under “Theater Address”.</p>
+
+  <div class="row">
+    <div class="field"><label for="t-name">Theater name</label>
+      <input type="text" id="t-name" placeholder="Regal Example 12"></div>
+    <div class="field"><label for="t-address">Address</label>
+      <input type="text" id="t-address" placeholder="1 Cinema Way, Springfield IL 62701"></div>
+  </div>
+  <div class="actions"><button type="button" id="add-theater">Add theater</button></div>
+
+  {% if theaters %}
+  <table style="margin-top:18px">
+    <thead><tr><th>Name</th><th>Address</th><th class="right"></th></tr></thead>
+    <tbody>
+      {% for t in theaters %}
+      <tr data-theater="{{ t.id }}">
+        <td><input type="text" class="f-name" value="{{ t.name }}"></td>
+        <td><input type="text" class="f-address" value="{{ t.address }}"></td>
+        <td class="right">
+          <button class="small secondary" data-action="save">Save</button>
+          <button class="small danger" data-action="delete">Delete</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty" style="margin-top:18px">No theaters yet.</div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const $ = (id) => document.getElementById(id);
+
+$('add-person').addEventListener('click', (e) => busy(e.target, 'Adding…', async () => {
+  const name = $('p-name').value.trim();
+  if (!name) throw new Error('Enter a name.');
+  await api('POST', '/api/people', { name, discord_id: $('p-id').value.trim() || null });
+  location.reload();
+}));
+
+$('add-theater').addEventListener('click', (e) => busy(e.target, 'Adding…', async () => {
+  const name = $('t-name').value.trim();
+  const address = $('t-address').value.trim();
+  if (!name || !address) throw new Error('Enter both a name and an address.');
+  await api('POST', '/api/theaters', { name, address });
+  location.reload();
+}));
+
+document.querySelectorAll('[data-person]').forEach((row) => {
+  const id = row.dataset.person;
+  row.querySelector('[data-action="save"]').addEventListener('click', (e) =>
+    busy(e.target, '…', async () => {
+      await api('PUT', `/api/people/${id}`, {
+        name: row.querySelector('.f-name').value.trim(),
+        discord_id: row.querySelector('.f-id').value.trim() || null,
+      });
+      toast('Saved.', 'ok');
+      setTimeout(() => location.reload(), 700);
+    }));
+  row.querySelector('[data-action="delete"]').addEventListener('click', (e) => {
+    if (!confirm('Delete this person? They are also removed from any saved upcoming movies.')) return;
+    busy(e.target, '…', async () => {
+      await api('DELETE', `/api/people/${id}`);
+      row.remove();
+      toast('Deleted.', 'ok');
+    });
+  });
+});
+
+document.querySelectorAll('[data-theater]').forEach((row) => {
+  const id = row.dataset.theater;
+  row.querySelector('[data-action="save"]').addEventListener('click', (e) =>
+    busy(e.target, '…', async () => {
+      await api('PUT', `/api/theaters/${id}`, {
+        name: row.querySelector('.f-name').value.trim(),
+        address: row.querySelector('.f-address').value.trim(),
+      });
+      toast('Saved.', 'ok');
+    }));
+  row.querySelector('[data-action="delete"]').addEventListener('click', (e) => {
+    if (!confirm('Delete this theater? Saved movies keep their date but lose the address.')) return;
+    busy(e.target, '…', async () => {
+      await api('DELETE', `/api/theaters/${id}`);
+      row.remove();
+      toast('Deleted.', 'ok');
+    });
+  });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}Upcoming Movies · Movie Discord Notifier{% endblock %}
+
+{% block content %}
+<h1>Upcoming Movies</h1>
+<p class="subtitle">Movies you already hold tickets for — who is going, how many spares, when and where.</p>
+
+<div class="card">
+  <h3>New upcoming movie</h3>
+
+  <div class="field picker">
+    <label for="movie-search">Movie</label>
+    <input type="search" id="movie-search" placeholder="Start typing a movie title…" autocomplete="off">
+    <div class="picker-results" id="movie-results"></div>
+  </div>
+  <div class="selected-movie" id="movie-selected" style="display:none"></div>
+
+  <div class="row" style="margin-top:16px">
+    <div class="field">
+      <label for="start-at">Starts</label>
+      <input type="datetime-local" id="start-at">
+    </div>
+    <div class="field">
+      <label for="end-at">Ends (optional)</label>
+      <input type="datetime-local" id="end-at">
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label for="theater">Theater</label>
+      <select id="theater">
+        <option value="">— none —</option>
+        {% for t in theaters %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="extra-tickets">Extra tickets</label>
+      <input type="number" id="extra-tickets" min="0" step="1" value="0">
+    </div>
+    <div class="field">
+      <label for="trailer-url">Trailer URL</label>
+      <input type="text" id="trailer-url" placeholder="https://www.youtube.com/watch?v=…">
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Got tickets for</label>
+    {% if people %}
+    <div class="people-grid">
+      {% for p in people %}
+      <label class="person-chip">
+        <input type="checkbox" class="attendee" value="{{ p.id }}">
+        <span>
+          <span class="pc-name">{{ p.name }}</span><br>
+          {% if p.discord_id %}<span class="pc-id">{{ p.discord_id }}</span>
+          {% else %}<span class="pc-id none">No Discord</span>{% endif %}
+        </span>
+      </label>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">No people saved yet. <a href="/people">Add people →</a></div>
+    {% endif %}
+  </div>
+
+  <div class="row">
+    <label class="checkbox">
+      <input type="checkbox" id="remind" checked>
+      <span class="cb-text">Post a reminder before showtime
+        <small>Re-posts the same message so everyone gets pinged again.</small>
+      </span>
+    </label>
+    <div class="field">
+      <label for="remind-hours">Hours before showtime</label>
+      <input type="number" id="remind-hours" min="1" max="168" step="1" value="3">
+    </div>
+  </div>
+
+  <label class="checkbox">
+    <input type="checkbox" id="post-now" checked>
+    <span class="cb-text">Post to Discord now
+      <small>Uncheck to just save it and post later from the list below.</small>
+    </span>
+  </label>
+
+  <div class="actions">
+    <button type="button" id="create-btn">Create &amp; post</button>
+    <button type="button" class="secondary" id="preview-btn">Preview message</button>
+    <button type="button" class="secondary" id="reset-btn">Clear</button>
+  </div>
+  <div class="preview" id="preview" style="display:none"></div>
+</div>
+
+<h2>Saved upcoming movies</h2>
+{% if showings %}
+  {% for s in showings %}
+  <div class="entry" data-id="{{ s.id }}">
+    {% if s.poster_path %}<img src="{{ poster_url(s.poster_path, 'w185') }}" alt="">{% endif %}
+    <div class="e-body">
+      <h4>{{ s.title }}
+        {% if s.posted_at %}<span class="badge posted">Posted</span>
+        {% else %}<span class="badge pending">Not posted</span>{% endif %}
+        {% if s.reminded_at %}<span class="badge posted">Reminder sent</span>{% endif %}
+      </h4>
+      <div class="e-meta"><strong data-when="{{ s.start_at }}"></strong></div>
+      {% if s.theater_name %}<div class="e-meta">📍 {{ s.theater_name }}{% if s.theater_address %}, {{ s.theater_address }}{% endif %}</div>{% endif %}
+      <div class="e-meta">👥
+        {% if s.attendees %}{{ s.attendees | map(attribute='name') | join(', ') }}{% else %}nobody yet{% endif %}
+        · 🎟️ {{ s.extra_tickets }} extra
+      </div>
+    </div>
+    <div class="e-actions">
+      <button class="small secondary" data-action="post">Post to Discord</button>
+      <button class="small danger" data-action="delete">Delete</button>
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="empty">No upcoming movies yet.</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const $ = (id) => document.getElementById(id);
+
+const picker = new MoviePicker({
+  input: 'movie-search',
+  results: 'movie-results',
+  selected: 'movie-selected',
+  onSelect: (movie) => {
+    $('movie-selected').style.display = 'flex';
+    $('trailer-url').value = movie.trailer_url || '';
+  },
+});
+
+$('start-at').value = defaultDateTime(24);
+
+document.querySelectorAll('[data-when]').forEach((el) => {
+  const epoch = Number(el.dataset.when);
+  el.textContent = `${epochToLocalString(epoch)} (${relativeTime(epoch)})`;
+});
+
+function payload() {
+  if (!picker.movie) throw new Error('Pick a movie first.');
+  const startAt = localToEpoch($('start-at').value);
+  if (!startAt) throw new Error('Choose a start date and time.');
+  const endAt = localToEpoch($('end-at').value);
+  if (endAt && endAt <= startAt) throw new Error('The end time must be after the start time.');
+
+  return {
+    tmdb_id: picker.movie.tmdb_id,
+    start_at: startAt,
+    end_at: endAt,
+    theater_id: $('theater').value ? Number($('theater').value) : null,
+    attendee_ids: [...document.querySelectorAll('.attendee:checked')].map((c) => Number(c.value)),
+    extra_tickets: Number($('extra-tickets').value) || 0,
+    trailer_url: $('trailer-url').value.trim() || null,
+    remind: $('remind').checked,
+    remind_hours: Number($('remind-hours').value) || 3,
+    post_now: $('post-now').checked,
+  };
+}
+
+$('reset-btn').addEventListener('click', () => {
+  picker.reset();
+  $('movie-selected').style.display = 'none';
+  $('trailer-url').value = '';
+  $('end-at').value = '';
+  $('extra-tickets').value = '0';
+  $('preview').style.display = 'none';
+  document.querySelectorAll('.attendee:checked').forEach((c) => { c.checked = false; });
+  $('start-at').value = defaultDateTime(24);
+});
+
+// Rendered server-side by the same builder that posts to Discord, so the
+// preview is byte-for-byte what the channel would receive. Nothing is saved.
+$('preview-btn').addEventListener('click', (e) => busy(e.target, 'Building…', async () => {
+  const { content } = await api('POST', '/api/showings/preview', payload());
+  $('preview').textContent = content;
+  $('preview').style.display = '';
+}));
+
+$('create-btn').addEventListener('click', (e) => busy(e.target, 'Working…', async () => {
+  const res = await api('POST', '/api/showings', payload());
+  if (res.warning) {
+    toast(`Saved, but Discord rejected the post: ${res.warning}`, 'warn', 9000);
+  } else {
+    toast(res.posted ? 'Created and posted to Discord.' : 'Saved. Not posted yet.', 'ok');
+  }
+  setTimeout(() => location.reload(), 900);
+}));
+
+document.querySelectorAll('.entry').forEach((entry) => {
+  const id = entry.dataset.id;
+  entry.querySelector('[data-action="post"]').addEventListener('click', (e) =>
+    busy(e.target, 'Posting…', async () => {
+      const res = await api('POST', `/api/showings/${id}/post`);
+      toast(res.message, 'ok');
+      setTimeout(() => location.reload(), 900);
+    }));
+  entry.querySelector('[data-action="delete"]').addEventListener('click', (e) => {
+    if (!confirm('Delete this upcoming movie? This does not remove anything already posted to Discord.')) return;
+    busy(e.target, 'Deleting…', async () => {
+      await api('DELETE', `/api/showings/${id}`);
+      entry.remove();
+      toast('Deleted.', 'ok');
+    });
+  });
+});
+</script>
+{% endblock %}

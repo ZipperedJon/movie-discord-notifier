@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Settings · Movie Discord Notifier{% endblock %}
+
+{% block content %}
+<h1>Settings</h1>
+<p class="subtitle">
+  Saved to a local SQLite database in <code>data/</code>, so everything survives a restart.
+  That folder is gitignored — your key and webhooks never leave this machine.
+</p>
+
+<form id="settings-form">
+
+  <div class="card">
+    <h3>🎟️ Tickets webhook <span style="color:var(--muted);font-weight:400">(primary)</span></h3>
+    <p class="hint">Where ticket-release announcements get posted.</p>
+    <div class="field">
+      <label for="tickets_webhook_url">Discord webhook URL</label>
+      <input type="text" id="tickets_webhook_url" name="tickets_webhook_url"
+             placeholder="https://discord.com/api/webhooks/…" autocomplete="off"
+             value="{{ settings.tickets_webhook_url }}">
+    </div>
+    <label class="checkbox">
+      <input type="checkbox" id="tickets_is_thread" {{ 'checked' if settings.tickets_is_thread }}>
+      <span class="cb-text">This is a threads channel
+        <small>Check for a Forum or Media channel. Each post opens a new thread named after the movie.</small>
+      </span>
+    </label>
+    <div class="actions">
+      <button type="button" class="secondary" id="test-tickets">Send test message</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>🎥 Upcoming movies webhook</h3>
+    <p class="hint">Where the “who has tickets” posts go.</p>
+    <label class="checkbox">
+      <input type="checkbox" id="upcoming_use_primary" {{ 'checked' if settings.upcoming_use_primary }}>
+      <span class="cb-text">Use the primary tickets webhook above
+        <small>Uncheck to post upcoming movies to a different channel.</small>
+      </span>
+    </label>
+    <div id="upcoming-fields">
+      <div class="field">
+        <label for="upcoming_webhook_url">Discord webhook URL</label>
+        <input type="text" id="upcoming_webhook_url" name="upcoming_webhook_url"
+               placeholder="https://discord.com/api/webhooks/…" autocomplete="off"
+               value="{{ settings.upcoming_webhook_url }}">
+      </div>
+      <label class="checkbox">
+        <input type="checkbox" id="upcoming_is_thread" {{ 'checked' if settings.upcoming_is_thread }}>
+        <span class="cb-text">This is a threads channel
+          <small>Check for a Forum or Media channel.</small>
+        </span>
+      </label>
+    </div>
+    <div class="actions">
+      <button type="button" class="secondary" id="test-upcoming">Send test message</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>🔑 TMDB API key</h3>
+    <p class="hint">
+      Powers movie search, posters, synopses and trailers.
+      <a href="{{ tmdb_key_url }}" target="_blank" rel="noopener">Generate your own key at themoviedb.org →</a>
+      Both the v3 API key and the v4 read access token work.
+    </p>
+    <div class="field">
+      <label for="tmdb_api_key">API key</label>
+      <input type="password" id="tmdb_api_key" name="tmdb_api_key" autocomplete="off"
+             placeholder="Paste your TMDB key" value="{{ settings.tmdb_api_key }}">
+    </div>
+    <div class="actions">
+      <button type="button" class="secondary" id="toggle-key">Show key</button>
+      <button type="button" class="secondary" id="test-tmdb">Test key</button>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button type="submit" id="save-btn">Save settings</button>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const $ = (id) => document.getElementById(id);
+
+function syncUpcomingFields() {
+  $('upcoming-fields').style.display = $('upcoming_use_primary').checked ? 'none' : '';
+}
+$('upcoming_use_primary').addEventListener('change', syncUpcomingFields);
+syncUpcomingFields();
+
+$('toggle-key').addEventListener('click', () => {
+  const field = $('tmdb_api_key');
+  const showing = field.type === 'text';
+  field.type = showing ? 'password' : 'text';
+  $('toggle-key').textContent = showing ? 'Show key' : 'Hide key';
+});
+
+function collect() {
+  return {
+    tmdb_api_key: $('tmdb_api_key').value.trim(),
+    tickets_webhook_url: $('tickets_webhook_url').value.trim(),
+    tickets_is_thread: $('tickets_is_thread').checked,
+    upcoming_use_primary: $('upcoming_use_primary').checked,
+    upcoming_webhook_url: $('upcoming_webhook_url').value.trim(),
+    upcoming_is_thread: $('upcoming_is_thread').checked,
+  };
+}
+
+$('settings-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  busy($('save-btn'), 'Saving…', async () => {
+    await api('PUT', '/api/settings', collect());
+    toast('Settings saved.', 'ok');
+  });
+});
+
+$('test-tmdb').addEventListener('click', (e) => {
+  busy(e.target, 'Testing…', async () => {
+    const res = await api('POST', '/api/settings/test-tmdb', { tmdb_api_key: $('tmdb_api_key').value.trim() });
+    toast(res.message, 'ok');
+  });
+});
+
+// A test post needs the CURRENT values on the server, so save first.
+for (const kind of ['tickets', 'upcoming']) {
+  $(`test-${kind}`).addEventListener('click', (e) => {
+    busy(e.target, 'Sending…', async () => {
+      await api('PUT', '/api/settings', collect());
+      const res = await api('POST', `/api/settings/test-webhook/${kind}`);
+      toast(res.message, 'ok');
+    });
+  });
+}
+</script>
+{% endblock %}

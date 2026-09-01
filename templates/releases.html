@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Ticket Releases · Movie Discord Notifier{% endblock %}
+
+{% block content %}
+<h1>Ticket Releases</h1>
+<p class="subtitle">Announce when tickets go on sale. Posts a rich embed now, and can ping the channel again the moment tickets actually drop.</p>
+
+<div class="card">
+  <h3>New ticket release</h3>
+
+  <div class="field picker">
+    <label for="movie-search">Movie</label>
+    <input type="search" id="movie-search" placeholder="Start typing a movie title…" autocomplete="off">
+    <div class="picker-results" id="movie-results"></div>
+  </div>
+  <div class="selected-movie" id="movie-selected" style="display:none"></div>
+
+  <div class="row" style="margin-top:16px">
+    <div class="field">
+      <label for="drop-at">Tickets drop at</label>
+      <input type="datetime-local" id="drop-at">
+    </div>
+    <div class="field">
+      <label for="trailer-url">Trailer URL (auto-filled from TMDB)</label>
+      <input type="text" id="trailer-url" placeholder="https://www.youtube.com/watch?v=…">
+    </div>
+  </div>
+
+  <label class="checkbox">
+    <input type="checkbox" id="remind" checked>
+    <span class="cb-text">Ping the channel again when tickets drop
+      <small>A background job posts “Tickets are on sale now!” at the time above.</small>
+    </span>
+  </label>
+  <label class="checkbox">
+    <input type="checkbox" id="post-now" checked>
+    <span class="cb-text">Post the announcement to Discord now
+      <small>Uncheck to just save it and post later from the list below.</small>
+    </span>
+  </label>
+
+  <div class="actions">
+    <button type="button" id="create-btn">Create &amp; post</button>
+    <button type="button" class="secondary" id="reset-btn">Clear</button>
+  </div>
+</div>
+
+<h2>Saved ticket releases</h2>
+{% if releases %}
+  {% for r in releases %}
+  <div class="entry" data-id="{{ r.id }}">
+    {% if r.poster_path %}<img src="{{ poster_url(r.poster_path, 'w185') }}" alt="">{% endif %}
+    <div class="e-body">
+      <h4>{{ r.title }}
+        {% if r.posted_at %}<span class="badge posted">Posted</span>
+        {% else %}<span class="badge pending">Not posted</span>{% endif %}
+        {% if r.reminded_at %}<span class="badge posted">Drop ping sent</span>{% endif %}
+      </h4>
+      <div class="e-meta">Tickets drop <strong data-when="{{ r.drop_at }}"></strong></div>
+      <div class="e-meta">{{ r.genres or '—' }}</div>
+      {% if r.trailer_url %}<div class="e-meta"><a href="{{ r.trailer_url }}" target="_blank" rel="noopener">▶ Trailer</a></div>{% endif %}
+    </div>
+    <div class="e-actions">
+      <button class="small secondary" data-action="post">Post to Discord</button>
+      <button class="small danger" data-action="delete">Delete</button>
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="empty">No ticket releases yet.</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const $ = (id) => document.getElementById(id);
+
+const picker = new MoviePicker({
+  input: 'movie-search',
+  results: 'movie-results',
+  selected: 'movie-selected',
+  onSelect: (movie) => {
+    $('movie-selected').style.display = 'flex';
+    $('trailer-url').value = movie.trailer_url || '';
+  },
+});
+
+$('drop-at').value = defaultDateTime(24);
+
+// Render every stored epoch in the viewer's own timezone.
+document.querySelectorAll('[data-when]').forEach((el) => {
+  const epoch = Number(el.dataset.when);
+  el.textContent = `${epochToLocalString(epoch)} (${relativeTime(epoch)})`;
+});
+
+$('reset-btn').addEventListener('click', () => {
+  picker.reset();
+  $('movie-selected').style.display = 'none';
+  $('trailer-url').value = '';
+  $('drop-at').value = defaultDateTime(24);
+});
+
+$('create-btn').addEventListener('click', (e) => busy(e.target, 'Working…', async () => {
+  if (!picker.movie) throw new Error('Pick a movie first.');
+  const dropAt = localToEpoch($('drop-at').value);
+  if (!dropAt) throw new Error('Choose the date and time tickets drop.');
+
+  const res = await api('POST', '/api/releases', {
+    tmdb_id: picker.movie.tmdb_id,
+    drop_at: dropAt,
+    trailer_url: $('trailer-url').value.trim() || null,
+    remind: $('remind').checked,
+    post_now: $('post-now').checked,
+  });
+
+  if (res.warning) {
+    toast(`Saved, but Discord rejected the post: ${res.warning}`, 'warn', 9000);
+  } else {
+    toast(res.posted ? 'Created and posted to Discord.' : 'Saved. Not posted yet.', 'ok');
+  }
+  setTimeout(() => location.reload(), 900);
+}));
+
+document.querySelectorAll('.entry').forEach((entry) => {
+  const id = entry.dataset.id;
+  entry.querySelector('[data-action="post"]').addEventListener('click', (e) =>
+    busy(e.target, 'Posting…', async () => {
+      const res = await api('POST', `/api/releases/${id}/post`);
+      toast(res.message, 'ok');
+      setTimeout(() => location.reload(), 900);
+    }));
+  entry.querySelector('[data-action="delete"]').addEventListener('click', (e) => {
+    if (!confirm('Delete this ticket release? This does not remove anything already posted to Discord.')) return;
+    busy(e.target, 'Deleting…', async () => {
+      await api('DELETE', `/api/releases/${id}`);
+      entry.remove();
+      toast('Deleted.', 'ok');
+    });
+  });
+});
+</script>
+{% endblock %}

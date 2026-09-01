@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Movie Discord Notifier{% endblock %}</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">🎬</span> Movie Notifier</div>
+    <nav class="nav">
+      <a href="/"          class="{{ 'active' if request.url.path == '/' }}">📊 Dashboard</a>
+      <a href="/releases"  class="{{ 'active' if request.url.path == '/releases' }}">🎟️ Ticket Releases</a>
+      <a href="/upcoming"  class="{{ 'active' if request.url.path == '/upcoming' }}">🎥 Upcoming Movies</a>
+      <a href="/people"    class="{{ 'active' if request.url.path == '/people' }}">👥 People &amp; Theaters</a>
+      <a href="/settings"  class="{{ 'active' if request.url.path == '/settings' }}">⚙️ Settings</a>
+    </nav>
+    {% if not configured %}
+    <div class="sidebar-note">
+      No TMDB API key saved yet — movie search will not work.
+      <a href="/settings">Open Settings →</a>
+    </div>
+    {% endif %}
+  </aside>
+
+  <main class="main">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<div id="toasts"></div>
+<script src="/static/js/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
