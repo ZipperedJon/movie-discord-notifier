@@ -210,6 +210,132 @@ class MoviePicker {
 }
 
 /**
+ * Keeps an "Ends" datetime in step with a "Starts" datetime.
+ *
+ * Moving the start shifts the end by the same amount, so the duration you have
+ * set is preserved — that matters when the end was padded for previews. With no
+ * usable end yet, it falls back to start + the movie's runtime. Either way the
+ * end can never be left stranded before the start.
+ */
+class EndTimeSync {
+  constructor({ start, end, hint, getRuntime }) {
+    this.start = document.getElementById(start);
+    this.end = document.getElementById(end);
+    this.hint = document.getElementById(hint);
+    this.getRuntime = getRuntime || (() => null);
+    this.custom = false;           // true once the user picks their own duration
+    this.lastStart = localToEpoch(this.start.value);
+
+    this.start.addEventListener('input', () => this.onStartChange());
+    this.end.addEventListener('input', () => {
+      this.custom = true;
+      this.render();
+    });
+  }
+
+  /** Duration currently in the fields, in seconds, or null. */
+  duration() {
+    const s = localToEpoch(this.start.value);
+    const e = localToEpoch(this.end.value);
+    return s && e && e > s ? e - s : null;
+  }
+
+  onStartChange() {
+    const started = localToEpoch(this.start.value);
+    if (!started) return;
+
+    // Prefer the duration that was on screen a moment ago, measured against the
+    // PREVIOUS start — reading it after the start moved would give the wrong span.
+    const ended = localToEpoch(this.end.value);
+    let span = null;
+    if (ended && this.lastStart && ended > this.lastStart) span = ended - this.lastStart;
+
+    const runtime = this.getRuntime();
+    if (span === null && runtime) span = runtime * 60;
+
+    if (span !== null) this.end.value = epochToInputValue(started + span);
+    this.lastStart = started;
+    this.render();
+  }
+
+  /** Movie changed: its runtime is now the source of truth again. */
+  resetToRuntime() {
+    this.custom = false;
+    const started = localToEpoch(this.start.value);
+    const runtime = this.getRuntime();
+    if (started && runtime) this.end.value = epochToInputValue(started + runtime * 60);
+    this.lastStart = started;
+    this.render();
+  }
+
+  render() {
+    if (!this.hint) return;
+    const runtime = this.getRuntime();
+    if (!runtime) {
+      this.hint.textContent = this.end.value ? '' : '(optional)';
+      return;
+    }
+    const span = this.duration();
+    const matchesRuntime = span !== null && Math.abs(span - runtime * 60) < 60;
+    this.hint.textContent = matchesRuntime
+      ? `(${formatRuntime(runtime)} runtime)`
+      : `(${formatRuntime(runtime)} runtime · ${span ? formatRuntime(Math.round(span / 60)) : '—'} booked)`;
+  }
+}
+
+/**
+ * Highlights a save button once something changes and warns before leaving with
+ * unsaved edits. Every tracker registers itself so one beforeunload covers them all.
+ */
+const dirtyTrackers = new Set();
+
+class DirtyTracker {
+  constructor(saveButton, { row = null } = {}) {
+    this.button = saveButton;
+    this.row = row;
+    this.dirty = false;
+    this.label = saveButton ? saveButton.textContent : '';
+    dirtyTrackers.add(this);
+  }
+
+  /** Flag every listed input as something that makes this tracker dirty. */
+  watch(elements) {
+    for (const el of elements) {
+      if (!el) continue;
+      const evt = el.type === 'checkbox' || el.tagName === 'SELECT' ? 'change' : 'input';
+      el.addEventListener(evt, () => this.mark());
+    }
+    return this;
+  }
+
+  mark() {
+    if (this.dirty) return;
+    this.dirty = true;
+    if (this.button) {
+      this.button.classList.add('dirty');
+      this.button.textContent = `${this.label} •`;
+    }
+    if (this.row) this.row.classList.add('dirty');
+  }
+
+  clear() {
+    this.dirty = false;
+    if (this.button) {
+      this.button.classList.remove('dirty');
+      this.button.textContent = this.label;
+    }
+    if (this.row) this.row.classList.remove('dirty');
+  }
+}
+
+window.addEventListener('beforeunload', (e) => {
+  if ([...dirtyTrackers].some((t) => t.dirty)) {
+    e.preventDefault();
+    e.returnValue = '';   // required by older browsers to trigger the prompt
+  }
+});
+
+/**
  * Open a <dialog> and resolve with its field values on submit, or null on cancel.
  * Nothing else on the page is touched, so whatever the user already filled in
  * on the main form stays exactly as it was.

@@ -184,28 +184,6 @@
 <script>
 const $ = (id) => document.getElementById(id);
 
-// The end time is derived from the movie's TMDB runtime, but the moment the user
-// types their own end time we stop overwriting it.
-let endTouched = false;
-$('end-at').addEventListener('input', () => { endTouched = true; });
-
-function syncEndFromRuntime() {
-  const runtime = picker.movie && picker.movie.runtime;
-  const hint = $('end-hint');
-
-  if (!runtime) {
-    hint.textContent = picker.movie ? '(TMDB has no runtime — set it yourself)' : '(optional)';
-    return;
-  }
-  hint.textContent = endTouched
-    ? `(${formatRuntime(runtime)} runtime)`
-    : `(auto: ${formatRuntime(runtime)} runtime)`;
-
-  if (endTouched) return;
-  const startAt = localToEpoch($('start-at').value);
-  $('end-at').value = startAt ? epochToInputValue(startAt + runtime * 60) : '';
-}
-
 const picker = new MoviePicker({
   input: 'movie-search',
   results: 'movie-results',
@@ -213,12 +191,19 @@ const picker = new MoviePicker({
   onSelect: (movie) => {
     $('movie-selected').style.display = 'flex';
     $('trailer-url').value = movie.trailer_url || '';
-    syncEndFromRuntime();
+    endSync.resetToRuntime();
   },
 });
 
 $('start-at').value = defaultDateTime(24);
-$('start-at').addEventListener('input', syncEndFromRuntime);
+
+// Moving the start carries the end with it, keeping whatever duration is set.
+const endSync = new EndTimeSync({
+  start: 'start-at',
+  end: 'end-at',
+  hint: 'end-hint',
+  getRuntime: () => (picker.movie ? picker.movie.runtime : null),
+});
 $('end-hint').textContent = '(optional)';
 
 document.querySelectorAll('[data-when]').forEach((el) => {
@@ -301,7 +286,8 @@ $('reset-btn').addEventListener('click', () => {
   $('preview').style.display = 'none';
   document.querySelectorAll('.attendee:checked').forEach((c) => { c.checked = false; });
   $('start-at').value = defaultDateTime(24);
-  endTouched = false;
+  endSync.custom = false;
+  endSync.lastStart = localToEpoch($('start-at').value);
   $('end-hint').textContent = '(optional)';
 });
 

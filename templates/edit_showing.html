@@ -116,6 +116,7 @@
     <button type="button" id="save-btn">Save changes</button>
     <button type="button" class="secondary" id="preview-btn">Preview message</button>
     <a class="btn secondary" href="/upcoming">Cancel</a>
+    <span class="unsaved-note" id="unsaved">● Unsaved changes</span>
   </div>
   <div class="preview" id="preview" style="display:none"></div>
 </div>
@@ -180,25 +181,18 @@ const SHOWING = {
   end_at: {{ showing.end_at or 'null' }},
 };
 
-// An existing showing already has an end time, so treat it as user-set: never
-// silently overwrite what was saved unless the movie itself is swapped.
-let endTouched = Boolean(SHOWING.end_at);
-$('end-at').addEventListener('input', () => { endTouched = true; });
+// Highlights "Save changes" and warns before leaving with edits pending.
+const dirty = new DirtyTracker($('save-btn'));
+const origMark = dirty.mark.bind(dirty);
+dirty.mark = () => { origMark(); $('unsaved').classList.add('show'); };
+dirty.watch([
+  $('start-at'), $('end-at'), $('theater'), $('extra-tickets'),
+  $('trailer-url'), $('remind'), $('remind-hours'),
+  ...document.querySelectorAll('.attendee'),
+]);
 
 function currentRuntime() {
   return picker.movie ? picker.movie.runtime : SHOWING.runtime;
-}
-
-function syncEndFromRuntime() {
-  const runtime = currentRuntime();
-  const hint = $('end-hint');
-  if (!runtime) { hint.textContent = '(no runtime on TMDB — set it yourself)'; return; }
-  hint.textContent = endTouched
-    ? `(${formatRuntime(runtime)} runtime)`
-    : `(auto: ${formatRuntime(runtime)} runtime)`;
-  if (endTouched) return;
-  const startAt = localToEpoch($('start-at').value);
-  $('end-at').value = startAt ? epochToInputValue(startAt + runtime * 60) : '';
 }
 
 const picker = new MoviePicker({
@@ -207,16 +201,21 @@ const picker = new MoviePicker({
   selected: 'movie-selected',
   onSelect: (movie) => {
     $('trailer-url').value = movie.trailer_url || '';
-    endTouched = false;          // a different movie means a different runtime
-    syncEndFromRuntime();
+    endSync.resetToRuntime();     // a different movie means a different runtime
+    dirty.mark();
     toast(`Swapped to “${movie.title}”.`, 'ok');
   },
 });
 
 $('start-at').value = epochToInputValue(SHOWING.start_at);
 $('end-at').value = epochToInputValue(SHOWING.end_at);
-$('start-at').addEventListener('input', syncEndFromRuntime);
-syncEndFromRuntime();
+
+// Moving the start now carries the end along with it, so the end can never be
+// left before the start.
+const endSync = new EndTimeSync({
+  start: 'start-at', end: 'end-at', hint: 'end-hint', getRuntime: currentRuntime,
+});
+endSync.render();
 
 // Rows saved before runtimes were stored have runtime = null. That is not the
 // same as "TMDB has no runtime", so look it up rather than claiming it's missing.
@@ -225,7 +224,8 @@ if (SHOWING.runtime === null) {
   api('GET', `/api/tmdb/movie/${SHOWING.tmdb_id}`)
     .then((movie) => {
       SHOWING.runtime = movie.runtime;
-      syncEndFromRuntime();
+      if (!$('end-at').value) endSync.resetToRuntime();
+      else endSync.render();
     })
     .catch(() => { $('end-hint').textContent = '(optional)'; });
 }
@@ -243,6 +243,7 @@ $('add-theater-btn').addEventListener('click', async () => {
   });
   if (!created) return;
   $('theater').add(new Option(created.name, created.id, true, true));
+  dirty.mark();                     // selecting it changes the showing
   toast(`Added “${created.name}” and selected it.`, 'ok');
 });
 
@@ -265,6 +266,8 @@ $('add-person-btn').addEventListener('click', async () => {
       : '<span class="pc-id none">No Discord</span>'}</span>`;
   $('people-grid').appendChild(chip);
   $('people-empty').style.display = 'none';
+  dirty.watch(chip.querySelectorAll('.attendee'));
+  dirty.mark();                     // ticking them is itself an unsaved change
   toast(`Added ${created.name} and ticked them.`, 'ok');
 });
 
@@ -306,6 +309,9 @@ $('save-btn').addEventListener('click', (e) => busy(e.target, 'Saving…', async
   } else {
     toast('Saved. Discord not updated.', 'ok');
   }
+  // Clear before navigating, or beforeunload would ask about changes we just saved.
+  dirty.clear();
+  $('unsaved').classList.remove('show');
   setTimeout(() => { window.location.href = '/upcoming'; }, 1100);
 }));
 </script>

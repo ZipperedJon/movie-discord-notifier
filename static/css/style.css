@@ -121,6 +121,35 @@ button.small, .btn.small { padding: 5px 11px; font-size: 12.5px; }
 
 .actions { display: flex; gap: 10px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
 
+/* Unsaved changes: the save button lifts and pulses green so it's obvious
+   something still needs saving. */
+button.dirty, .btn.dirty {
+  background: var(--green);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 3px rgba(59, 165, 93, .3), 0 4px 14px rgba(59, 165, 93, .35);
+  animation: pulse-save 1.9s ease-in-out infinite;
+}
+button.dirty:hover, .btn.dirty:hover { background: #45bd70; }
+
+@keyframes pulse-save {
+  50% { box-shadow: 0 0 0 7px rgba(59, 165, 93, .10), 0 4px 14px rgba(59, 165, 93, .3); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button.dirty, .btn.dirty { animation: none; }
+}
+
+/* The row being edited gets a green edge to match its button. */
+tr.dirty td { background: rgba(59, 165, 93, .07); }
+tr.dirty td:first-child { box-shadow: inset 3px 0 0 var(--green); }
+
+.unsaved-note {
+  display: none; align-items: center; gap: 7px;
+  color: var(--green); font-size: 13px; font-weight: 600;
+}
+.unsaved-note.show { display: inline-flex; }
+
 /* ---------- Movie search picker ---------- */
 .picker { position: relative; }
 .picker-results {

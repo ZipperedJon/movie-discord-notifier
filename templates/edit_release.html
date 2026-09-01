@@ -59,6 +59,7 @@
   <div class="actions">
     <button type="button" id="save-btn">Save changes</button>
     <a class="btn secondary" href="/releases">Cancel</a>
+    <span class="unsaved-note" id="unsaved">● Unsaved changes</span>
   </div>
 </div>
 {% endblock %}
@@ -68,12 +69,18 @@
 const $ = (id) => document.getElementById(id);
 const RELEASE = { id: {{ release.id }}, tmdb_id: {{ release.tmdb_id }}, drop_at: {{ release.drop_at }} };
 
+const dirty = new DirtyTracker($('save-btn'));
+const origMark = dirty.mark.bind(dirty);
+dirty.mark = () => { origMark(); $('unsaved').classList.add('show'); };
+dirty.watch([$('drop-at'), $('trailer-url'), $('remind')]);
+
 const picker = new MoviePicker({
   input: 'movie-search',
   results: 'movie-results',
   selected: 'movie-selected',
   onSelect: (movie) => {
     $('trailer-url').value = movie.trailer_url || '';
+    dirty.mark();
     toast(`Swapped to “${movie.title}”.`, 'ok');
   },
 });
@@ -100,6 +107,9 @@ $('save-btn').addEventListener('click', (e) => busy(e.target, 'Saving…', async
   } else {
     toast('Saved. Discord not updated.', 'ok');
   }
+  // Clear before navigating, or beforeunload would ask about changes we just saved.
+  dirty.clear();
+  $('unsaved').classList.remove('show');
   setTimeout(() => { window.location.href = '/releases'; }, 1100);
 }));
 </script>

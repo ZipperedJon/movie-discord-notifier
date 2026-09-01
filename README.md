@@ -22,7 +22,9 @@ the same movie name and poster avatar as the announcement, so the pair reads as 
 
 The **end time is filled in from the movie's TMDB runtime** — pick a movie and a start
 time and the Ends field populates itself (a 2h 35m film starting at 7:00 PM ends at
-9:35 PM). Type your own end time and it stops auto-updating.
+9:35 PM). Moving the start carries the end along with it, keeping whatever duration is
+set, so if you padded the end for previews that padding survives and the end can never
+end up before the start.
 
 ---
 
@@ -114,6 +116,13 @@ If that edit can't go through (the message was deleted in Discord, say), the app
 the update **into the same thread** instead of opening a new one, and remembers the new
 message so the next edit targets that. An entry that was never posted just gets posted
 fresh. Untick **Update Discord** to save locally without touching the channel.
+
+### Unsaved changes are hard to miss
+
+Change anything on an edit form — or in a person/theater row — and its **Save button
+turns green and pulses**, the row picks up a green edge, and an “Unsaved changes” note
+appears. Trying to close the tab or navigate away with edits pending brings up the
+browser's “leave site?” confirmation. Saving clears all of it.
 
 ### Dropping out is a strikethrough, not a deletion
 
