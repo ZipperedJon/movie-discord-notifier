@@ -61,8 +61,9 @@ CREATE TABLE IF NOT EXISTS showings (
     backdrop_path  TEXT,
     trailer_url    TEXT,
     accent_color   INTEGER,               -- average poster colour, embed sidebar
+    runtime        INTEGER,               -- minutes, from TMDB
     start_at       INTEGER NOT NULL,      -- unix epoch seconds
-    end_at         INTEGER,               -- unix epoch seconds
+    end_at         INTEGER,               -- unix epoch seconds, defaults to start + runtime
     theater_id     INTEGER REFERENCES theaters(id) ON DELETE SET NULL,
     extra_tickets  INTEGER NOT NULL DEFAULT 0,
     thread_id      TEXT,                  -- forum thread Discord created for this post
@@ -122,6 +123,7 @@ MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("showings", "accent_color", "INTEGER"),
     ("showings", "thread_id", "TEXT"),
     ("showings", "message_id", "TEXT"),
+    ("showings", "runtime", "INTEGER"),
 )
 
 

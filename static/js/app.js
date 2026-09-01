@@ -64,13 +64,30 @@ function relativeTime(epoch) {
   return 'now';
 }
 
+// Format a Date for a <input type="datetime-local"> value, in local time.
+function dateToInputValue(d) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+         `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function epochToInputValue(epoch) {
+  return epoch ? dateToInputValue(new Date(epoch * 1000)) : '';
+}
+
 // Prefill a datetime-local input with "now, rounded up to the next 15 minutes".
 function defaultDateTime(offsetHours = 0) {
   const d = new Date(Date.now() + offsetHours * 3600000);
   d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15, 0, 0);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
-         `T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return dateToInputValue(d);
+}
+
+/** "155" -> "2h 35m", for showing a movie's runtime. */
+function formatRuntime(minutes) {
+  if (!minutes) return null;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h ? `${h}h${m ? ` ${m}m` : ''}` : `${m}m`;
 }
 
 // ---------------------------------------------------------------- Movie picker

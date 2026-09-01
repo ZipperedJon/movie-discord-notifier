@@ -17,7 +17,12 @@ Times are posted as native Discord timestamps, so everyone sees them in their ow
 timezone with a live "in 3 days" counter.
 
 Each announcement is followed by a second message containing the bare trailer URL, so
-Discord renders a real YouTube player rather than a plain link.
+Discord renders a real YouTube player rather than a plain link. That follow-up carries
+the same movie name and poster avatar as the announcement, so the pair reads as one post.
+
+The **end time is filled in from the movie's TMDB runtime** — pick a movie and a start
+time and the Ends field populates itself (a 2h 35m film starting at 7:00 PM ends at
+9:35 PM). Type your own end time and it stops auto-updating.
 
 ---
 

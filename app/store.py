@@ -176,7 +176,7 @@ def due_release_reminders(now_epoch: int) -> list[dict[str, Any]]:
 
 SHOWING_FIELDS = (
     "tmdb_id", "title", "poster_path", "backdrop_path", "trailer_url", "accent_color",
-    "start_at", "end_at", "theater_id", "extra_tickets", "remind", "remind_hours",
+    "runtime", "start_at", "end_at", "theater_id", "extra_tickets", "remind", "remind_hours",
 )
 
 _SHOWING_SELECT = """

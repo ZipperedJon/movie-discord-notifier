@@ -62,6 +62,16 @@ def _color(record: dict[str, Any]) -> int:
     return record.get("accent_color") or EMBED_COLOR
 
 
+def _runtime(minutes: int | None) -> str | None:
+    """155 -> '2h 35m'."""
+    if not minutes:
+        return None
+    hours, mins = divmod(int(minutes), 60)
+    if not hours:
+        return f"{mins}m"
+    return f"{hours}h {mins}m" if mins else f"{hours}h"
+
+
 # --------------------------------------------------------------------------
 # Webhook transport
 # --------------------------------------------------------------------------
@@ -171,15 +181,24 @@ def _explain(resp: httpx.Response, is_thread: bool) -> str:
     return detail
 
 
-async def _post_trailer(kind: str, trailer_url: str, thread_id: str | None, title: str) -> None:
+async def _post_trailer(
+    kind: str,
+    trailer_url: str,
+    thread_id: str | None,
+    title: str,
+    poster_path: str | None = None,
+) -> None:
     """Follow-up message carrying the bare URL so Discord renders the YouTube player.
 
     A masked [Trailer](url) link does not unfurl; a bare URL on its own does.
+    Carries the same username AND poster avatar as the announcement, otherwise this
+    message falls back to the webhook's default icon and looks like a different bot.
     """
     await send(
         kind,
         content=trailer_url,
         username=title,
+        avatar_url=poster_url(poster_path, "w185"),
         thread_id=thread_id,
     )
 
@@ -239,7 +258,13 @@ async def post_ticket_release(
         thread_id=release.get("thread_id") if reuse_thread else None,
     )
     if release.get("trailer_url"):
-        await _post_trailer("tickets", release["trailer_url"], result["thread_id"], release["title"])
+        await _post_trailer(
+            "tickets",
+            release["trailer_url"],
+            result["thread_id"],
+            release["title"],
+            release.get("poster_path"),
+        )
     return result
 
 
@@ -286,6 +311,8 @@ def build_upcoming(showing: dict[str, Any], *, heading: str | None = None) -> di
     if showing.get("end_at"):
         lines.append("to")
         lines.append(ts(showing["end_at"]))
+    if _runtime(showing.get("runtime")):
+        lines.append(f"⏱️ **Runtime:** {_runtime(showing['runtime'])}")
 
     if showing.get("theater_name") or showing.get("theater_address"):
         lines.append("📍 **Theater Address:**")
@@ -320,7 +347,11 @@ async def post_upcoming(
     )
     if showing.get("trailer_url"):
         await _post_trailer(
-            "upcoming", showing["trailer_url"], result["thread_id"], showing["title"]
+            "upcoming",
+            showing["trailer_url"],
+            result["thread_id"],
+            showing["title"],
+            showing.get("poster_path"),
         )
     return result
 

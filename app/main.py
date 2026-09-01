@@ -308,6 +308,14 @@ async def api_list_showings():
 
 async def _showing_record(payload: ShowingIn) -> dict[str, Any]:
     movie = await tmdb.get_movie(payload.tmdb_id)
+    runtime = movie.get("runtime")
+
+    # No end time given? Derive it from the movie's runtime. An explicit end_at
+    # from the form always wins, so this only ever fills a gap.
+    end_at = payload.end_at
+    if end_at is None and runtime:
+        end_at = payload.start_at + runtime * 60
+
     return {
         "tmdb_id": movie["tmdb_id"],
         "title": movie["title"],
@@ -317,8 +325,9 @@ async def _showing_record(payload: ShowingIn) -> dict[str, Any]:
         "accent_color": await colors.average_color_from_url(
             poster_url(movie.get("poster_path"), "w185")
         ),
+        "runtime": runtime,
         "start_at": payload.start_at,
-        "end_at": payload.end_at,
+        "end_at": end_at,
         "theater_id": payload.theater_id,
         "extra_tickets": payload.extra_tickets,
         "remind": int(payload.remind),
