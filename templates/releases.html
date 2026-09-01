@@ -54,6 +54,7 @@
       <h4>{{ r.title }}
         {% if r.posted_at %}<span class="badge posted">Posted</span>
         {% else %}<span class="badge pending">Not posted</span>{% endif %}
+        {% if r.thread_id %}<span class="badge posted">In thread</span>{% endif %}
         {% if r.reminded_at %}<span class="badge posted">Drop ping sent</span>{% endif %}
       </h4>
       <div class="e-meta">Tickets drop <strong data-when="{{ r.drop_at }}"></strong></div>

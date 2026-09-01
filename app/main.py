@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from . import discord, scheduler, store, tmdb
+from . import colors, discord, scheduler, store, tmdb
 from .config import STATIC_DIR, TEMPLATES_DIR, TMDB_API_KEY_URL, poster_url
 from .db import get_settings, init_db, save_settings
 
@@ -242,14 +242,17 @@ async def api_create_release(payload: ReleaseIn):
         "drop_at": payload.drop_at,
         "remind": int(payload.remind),
         "trailer_url": payload.trailer_url or movie.get("trailer_url"),
+        "accent_color": await colors.average_color_from_url(
+            poster_url(movie.get("poster_path"), "w185")
+        ),
     }
     release = store.create_release(record)
 
     posted, warning = False, None
     if payload.post_now:
         try:
-            await discord.post_ticket_release(release)
-            store.mark_release_posted(release["id"])
+            thread = await discord.post_ticket_release(release)
+            store.mark_release_posted(release["id"], thread)
             posted = True
         except discord.DiscordError as exc:
             warning = str(exc)
@@ -262,8 +265,8 @@ async def api_post_release(release_id: int):
     release = store.get_release(release_id)
     if not release:
         raise HTTPException(404, "Ticket release not found.")
-    await discord.post_ticket_release(release)
-    store.mark_release_posted(release_id)
+    thread = await discord.post_ticket_release(release)
+    store.mark_release_posted(release_id, thread)
     return {"ok": True, "message": f"Posted “{release['title']}” to Discord."}
 
 
@@ -294,7 +297,7 @@ class ShowingIn(BaseModel):
     extra_tickets: int = 0
     trailer_url: str | None = None
     remind: bool = True
-    remind_hours: int = 3
+    remind_hours: int = 1
     post_now: bool = True
 
 
@@ -311,6 +314,9 @@ async def _showing_record(payload: ShowingIn) -> dict[str, Any]:
         "poster_path": movie["poster_path"],
         "backdrop_path": movie["backdrop_path"],
         "trailer_url": payload.trailer_url or movie.get("trailer_url"),
+        "accent_color": await colors.average_color_from_url(
+            poster_url(movie.get("poster_path"), "w185")
+        ),
         "start_at": payload.start_at,
         "end_at": payload.end_at,
         "theater_id": payload.theater_id,
@@ -330,7 +336,7 @@ async def api_preview_showing_draft(payload: ShowingIn):
         "theater_name": theater["name"] if theater else None,
         "theater_address": theater["address"] if theater else None,
     }
-    return {"content": discord.build_upcoming(draft)}
+    return {"embed": discord.build_upcoming(draft)}
 
 
 @app.post("/api/showings", status_code=201)
@@ -340,8 +346,8 @@ async def api_create_showing(payload: ShowingIn):
     posted, warning = False, None
     if payload.post_now:
         try:
-            await discord.post_upcoming(showing)
-            store.mark_showing_posted(showing["id"])
+            thread = await discord.post_upcoming(showing)
+            store.mark_showing_posted(showing["id"], thread)
             posted = True
         except discord.DiscordError as exc:
             warning = str(exc)
@@ -354,8 +360,8 @@ async def api_post_showing(showing_id: int):
     showing = store.get_showing(showing_id)
     if not showing:
         raise HTTPException(404, "Showing not found.")
-    await discord.post_upcoming(showing)
-    store.mark_showing_posted(showing_id)
+    thread = await discord.post_upcoming(showing)
+    store.mark_showing_posted(showing_id, thread)
     return {"ok": True, "message": f"Posted “{showing['title']}” to Discord."}
 
 
@@ -364,7 +370,7 @@ async def api_preview_showing(showing_id: int):
     showing = store.get_showing(showing_id)
     if not showing:
         raise HTTPException(404, "Showing not found.")
-    return {"content": discord.build_upcoming(showing)}
+    return {"embed": discord.build_upcoming(showing)}
 
 
 @app.delete("/api/showings/{showing_id}")

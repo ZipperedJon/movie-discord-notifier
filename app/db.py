@@ -42,7 +42,10 @@ CREATE TABLE IF NOT EXISTS ticket_releases (
     poster_path   TEXT,
     backdrop_path TEXT,
     trailer_url   TEXT,
+    accent_color  INTEGER,                -- average poster colour, embed sidebar
     drop_at       INTEGER NOT NULL,       -- unix epoch seconds
+    thread_id     TEXT,                   -- forum thread Discord created for this post
+    message_id    TEXT,
     posted_at     TEXT,
     reminded_at   TEXT,
     remind        INTEGER NOT NULL DEFAULT 1,
@@ -57,14 +60,17 @@ CREATE TABLE IF NOT EXISTS showings (
     poster_path    TEXT,
     backdrop_path  TEXT,
     trailer_url    TEXT,
+    accent_color   INTEGER,               -- average poster colour, embed sidebar
     start_at       INTEGER NOT NULL,      -- unix epoch seconds
     end_at         INTEGER,               -- unix epoch seconds
     theater_id     INTEGER REFERENCES theaters(id) ON DELETE SET NULL,
     extra_tickets  INTEGER NOT NULL DEFAULT 0,
+    thread_id      TEXT,                  -- forum thread Discord created for this post
+    message_id     TEXT,
     posted_at      TEXT,
     reminded_at    TEXT,
     remind         INTEGER NOT NULL DEFAULT 1,
-    remind_hours   INTEGER NOT NULL DEFAULT 3,
+    remind_hours   INTEGER NOT NULL DEFAULT 1,
     created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -106,9 +112,26 @@ def cursor() -> Iterator[sqlite3.Cursor]:
         conn.close()
 
 
+# Columns added after the first release. SQLite has no "ADD COLUMN IF NOT EXISTS",
+# so check PRAGMA table_info first and only add what is missing. This lets an
+# existing data/app.db upgrade in place instead of needing to be deleted.
+MIGRATIONS: tuple[tuple[str, str, str], ...] = (
+    ("ticket_releases", "accent_color", "INTEGER"),
+    ("ticket_releases", "thread_id", "TEXT"),
+    ("ticket_releases", "message_id", "TEXT"),
+    ("showings", "accent_color", "INTEGER"),
+    ("showings", "thread_id", "TEXT"),
+    ("showings", "message_id", "TEXT"),
+)
+
+
 def init_db() -> None:
     with cursor() as cur:
         cur.executescript(SCHEMA)
+        for table, column, ddl in MIGRATIONS:
+            existing = {row["name"] for row in cur.execute(f"PRAGMA table_info({table})")}
+            if column not in existing:
+                cur.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
 
 
 # --------------------------------------------------------------------------

@@ -20,6 +20,8 @@ log = logging.getLogger("scheduler")
 async def run_once() -> None:
     now = int(time.time())
 
+    # Reminders reuse the thread the original announcement opened (post_* passes
+    # the stored thread_id through), so the whole movie stays in one conversation.
     for release in store.due_release_reminders(now):
         try:
             await discord.post_ticket_release(
@@ -33,8 +35,9 @@ async def run_once() -> None:
     for showing in store.due_showing_reminders(now):
         try:
             hours = showing.get("remind_hours") or 0
+            when = "in about an hour" if hours == 1 else f"in about {hours} hours"
             await discord.post_upcoming(
-                showing, heading=f"Reminder — {showing['title']} starts in ~{hours}h"
+                showing, heading=f"⏰ **Starting {when}!**"
             )
             store.mark_showing_reminded(showing["id"])
             log.info("Posted showing reminder for %s", showing["title"])

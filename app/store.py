@@ -100,7 +100,8 @@ def delete_theater(theater_id: int) -> None:
 
 RELEASE_FIELDS = (
     "tmdb_id", "title", "tagline", "overview", "release_date", "genres", "studios",
-    "budget", "poster_path", "backdrop_path", "trailer_url", "drop_at", "remind",
+    "budget", "poster_path", "backdrop_path", "trailer_url", "accent_color",
+    "drop_at", "remind",
 )
 
 
@@ -134,10 +135,19 @@ def delete_release(release_id: int) -> None:
         cur.execute("DELETE FROM ticket_releases WHERE id = ?", (release_id,))
 
 
-def mark_release_posted(release_id: int) -> None:
+def mark_release_posted(release_id: int, thread: dict[str, Any] | None = None) -> None:
+    """Records the post, and the thread Discord opened so follow-ups land in it.
+
+    COALESCE keeps the original thread: re-posting a movie should not orphan the
+    thread its earlier messages are already in.
+    """
+    thread = thread or {}
     with cursor() as cur:
         cur.execute(
-            "UPDATE ticket_releases SET posted_at = datetime('now') WHERE id = ?", (release_id,)
+            "UPDATE ticket_releases SET posted_at = datetime('now'), "
+            "thread_id = COALESCE(?, thread_id), message_id = COALESCE(?, message_id) "
+            "WHERE id = ?",
+            (thread.get("thread_id"), thread.get("message_id"), release_id),
         )
 
 
@@ -165,7 +175,7 @@ def due_release_reminders(now_epoch: int) -> list[dict[str, Any]]:
 # --------------------------------------------------------------------------
 
 SHOWING_FIELDS = (
-    "tmdb_id", "title", "poster_path", "backdrop_path", "trailer_url",
+    "tmdb_id", "title", "poster_path", "backdrop_path", "trailer_url", "accent_color",
     "start_at", "end_at", "theater_id", "extra_tickets", "remind", "remind_hours",
 )
 
@@ -219,9 +229,15 @@ def delete_showing(showing_id: int) -> None:
         cur.execute("DELETE FROM showings WHERE id = ?", (showing_id,))
 
 
-def mark_showing_posted(showing_id: int) -> None:
+def mark_showing_posted(showing_id: int, thread: dict[str, Any] | None = None) -> None:
+    thread = thread or {}
     with cursor() as cur:
-        cur.execute("UPDATE showings SET posted_at = datetime('now') WHERE id = ?", (showing_id,))
+        cur.execute(
+            "UPDATE showings SET posted_at = datetime('now'), "
+            "thread_id = COALESCE(?, thread_id), message_id = COALESCE(?, message_id) "
+            "WHERE id = ?",
+            (thread.get("thread_id"), thread.get("message_id"), showing_id),
+        )
 
 
 def mark_showing_reminded(showing_id: int) -> None:

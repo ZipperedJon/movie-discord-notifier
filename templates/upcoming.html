@@ -29,10 +29,13 @@
   <div class="row">
     <div class="field">
       <label for="theater">Theater</label>
-      <select id="theater">
-        <option value="">— none —</option>
-        {% for t in theaters %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
-      </select>
+      <div class="input-with-add">
+        <select id="theater">
+          <option value="">— none —</option>
+          {% for t in theaters %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+        </select>
+        <button type="button" class="secondary" id="add-theater-btn">＋ Add</button>
+      </div>
     </div>
     <div class="field">
       <label for="extra-tickets">Extra tickets</label>
@@ -45,9 +48,11 @@
   </div>
 
   <div class="field">
-    <label>Got tickets for</label>
-    {% if people %}
-    <div class="people-grid">
+    <div class="section-head">
+      <label>Got tickets for</label>
+      <button type="button" class="secondary small" id="add-person-btn">＋ Add person</button>
+    </div>
+    <div class="people-grid" id="people-grid">
       {% for p in people %}
       <label class="person-chip">
         <input type="checkbox" class="attendee" value="{{ p.id }}">
@@ -59,28 +64,28 @@
       </label>
       {% endfor %}
     </div>
-    {% else %}
-    <div class="empty">No people saved yet. <a href="/people">Add people →</a></div>
-    {% endif %}
+    <div class="empty" id="people-empty" style="margin-top:8px{{ ';display:none' if people }}">
+      No people saved yet — use “＋ Add person”.
+    </div>
   </div>
 
   <div class="row">
     <label class="checkbox">
       <input type="checkbox" id="remind" checked>
       <span class="cb-text">Post a reminder before showtime
-        <small>Re-posts the same message so everyone gets pinged again.</small>
+        <small>Goes into the same Discord thread as the original post.</small>
       </span>
     </label>
     <div class="field">
       <label for="remind-hours">Hours before showtime</label>
-      <input type="number" id="remind-hours" min="1" max="168" step="1" value="3">
+      <input type="number" id="remind-hours" min="1" max="168" step="1" value="1">
     </div>
   </div>
 
   <label class="checkbox">
     <input type="checkbox" id="post-now" checked>
     <span class="cb-text">Post to Discord now
-      <small>Uncheck to just save it and post later from the list below.</small>
+      <small>Posts the embed, then the trailer as a second message in the thread.</small>
     </span>
   </label>
 
@@ -101,6 +106,7 @@
       <h4>{{ s.title }}
         {% if s.posted_at %}<span class="badge posted">Posted</span>
         {% else %}<span class="badge pending">Not posted</span>{% endif %}
+        {% if s.thread_id %}<span class="badge posted">In thread</span>{% endif %}
         {% if s.reminded_at %}<span class="badge posted">Reminder sent</span>{% endif %}
       </h4>
       <div class="e-meta"><strong data-when="{{ s.start_at }}"></strong></div>
@@ -119,6 +125,55 @@
 {% else %}
   <div class="empty">No upcoming movies yet.</div>
 {% endif %}
+
+<!-- ---------------- Modals ---------------- -->
+<dialog class="modal" id="theater-modal">
+  <form method="dialog">
+    <div class="modal-head">
+      <h3>📍 Add a theater</h3>
+      <p>Posted as <code>Name, Address</code> under “Theater Address”.</p>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label for="tm-name">Theater name</label>
+        <input type="text" id="tm-name" name="name" placeholder="Regal Example 12" required>
+      </div>
+      <div class="field">
+        <label for="tm-address">Address</label>
+        <input type="text" id="tm-address" name="address"
+               placeholder="1 Cinema Way, Springfield IL 62701" required>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="secondary" data-cancel>Cancel</button>
+      <button type="submit" data-submit>Add theater</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="modal" id="person-modal">
+  <form method="dialog">
+    <div class="modal-head">
+      <h3>👤 Add a person</h3>
+      <p>Discord → Settings → Advanced → Developer Mode, then right-click a user → Copy User ID.
+         Leave blank for someone not on Discord.</p>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label for="pm-name">Name</label>
+        <input type="text" id="pm-name" name="name" placeholder="Jon" required>
+      </div>
+      <div class="field">
+        <label for="pm-id">Discord ID (optional)</label>
+        <input type="text" id="pm-id" name="discord_id" placeholder="123456789012345678" inputmode="numeric">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="secondary" data-cancel>Cancel</button>
+      <button type="submit" data-submit>Add person</button>
+    </div>
+  </form>
+</dialog>
 {% endblock %}
 
 {% block scripts %}
@@ -142,6 +197,50 @@ document.querySelectorAll('[data-when]').forEach((el) => {
   el.textContent = `${epochToLocalString(epoch)} (${relativeTime(epoch)})`;
 });
 
+// Cancel buttons just close their dialog; openModal() resolves null on close.
+document.querySelectorAll('dialog.modal [data-cancel]').forEach((btn) => {
+  btn.addEventListener('click', () => btn.closest('dialog').close());
+});
+
+// ---- Add theater without leaving the page (form state is untouched) ----
+$('add-theater-btn').addEventListener('click', async () => {
+  const created = await openModal('theater-modal', {
+    onSubmit: (values) => {
+      if (!values.name || !values.address) throw new Error('Enter both a name and an address.');
+      return api('POST', '/api/theaters', values);
+    },
+  });
+  if (!created) return;
+  const option = new Option(created.name, created.id, true, true);
+  $('theater').add(option);
+  toast(`Added “${created.name}” and selected it.`, 'ok');
+});
+
+// ---- Add person without leaving the page ----
+$('add-person-btn').addEventListener('click', async () => {
+  const created = await openModal('person-modal', {
+    onSubmit: (values) => {
+      if (!values.name) throw new Error('Enter a name.');
+      return api('POST', '/api/people', {
+        name: values.name,
+        discord_id: values.discord_id || null,
+      });
+    },
+  });
+  if (!created) return;
+
+  const chip = document.createElement('label');
+  chip.className = 'person-chip';
+  chip.innerHTML = `<input type="checkbox" class="attendee" value="${created.id}" checked>
+    <span><span class="pc-name">${escapeHtml(created.name)}</span><br>
+    ${created.discord_id
+      ? `<span class="pc-id">${escapeHtml(created.discord_id)}</span>`
+      : '<span class="pc-id none">No Discord</span>'}</span>`;
+  $('people-grid').appendChild(chip);
+  $('people-empty').style.display = 'none';
+  toast(`Added ${created.name} and ticked them.`, 'ok');
+});
+
 function payload() {
   if (!picker.movie) throw new Error('Pick a movie first.');
   const startAt = localToEpoch($('start-at').value);
@@ -158,7 +257,7 @@ function payload() {
     extra_tickets: Number($('extra-tickets').value) || 0,
     trailer_url: $('trailer-url').value.trim() || null,
     remind: $('remind').checked,
-    remind_hours: Number($('remind-hours').value) || 3,
+    remind_hours: Number($('remind-hours').value) || 1,
     post_now: $('post-now').checked,
   };
 }
@@ -169,17 +268,20 @@ $('reset-btn').addEventListener('click', () => {
   $('trailer-url').value = '';
   $('end-at').value = '';
   $('extra-tickets').value = '0';
+  $('remind-hours').value = '1';
   $('preview').style.display = 'none';
   document.querySelectorAll('.attendee:checked').forEach((c) => { c.checked = false; });
   $('start-at').value = defaultDateTime(24);
 });
 
 // Rendered server-side by the same builder that posts to Discord, so the
-// preview is byte-for-byte what the channel would receive. Nothing is saved.
+// preview is exactly what the channel would receive. Nothing is saved.
 $('preview-btn').addEventListener('click', (e) => busy(e.target, 'Building…', async () => {
-  const { content } = await api('POST', '/api/showings/preview', payload());
-  $('preview').textContent = content;
-  $('preview').style.display = '';
+  const { embed } = await api('POST', '/api/showings/preview', payload());
+  const box = $('preview');
+  box.textContent = `${embed.title}\n\n${embed.description}`;
+  box.style.borderLeftColor = '#' + (embed.color ?? 0x5865f2).toString(16).padStart(6, '0');
+  box.style.display = '';
 }));
 
 $('create-btn').addEventListener('click', (e) => busy(e.target, 'Working…', async () => {

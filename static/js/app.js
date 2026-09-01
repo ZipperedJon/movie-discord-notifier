@@ -192,6 +192,56 @@ class MoviePicker {
   }
 }
 
+/**
+ * Open a <dialog> and resolve with its field values on submit, or null on cancel.
+ * Nothing else on the page is touched, so whatever the user already filled in
+ * on the main form stays exactly as it was.
+ */
+function openModal(dialogId, { onSubmit } = {}) {
+  const dlg = document.getElementById(dialogId);
+  const form = dlg.querySelector('form');
+  const submitBtn = form.querySelector('[data-submit]');
+  const first = form.querySelector('input, select, textarea');
+
+  form.reset();
+  dlg.showModal();
+  if (first) setTimeout(() => first.focus(), 30);
+
+  return new Promise((resolve) => {
+    const cleanup = () => {
+      form.removeEventListener('submit', handleSubmit);
+      dlg.removeEventListener('close', handleClose);
+    };
+    const handleClose = () => { cleanup(); resolve(null); };
+
+    async function handleSubmit(e) {
+      e.preventDefault();
+      const values = Object.fromEntries(
+        [...form.elements]
+          .filter((el) => el.name)
+          .map((el) => [el.name, el.type === 'checkbox' ? el.checked : el.value.trim()])
+      );
+      const original = submitBtn.textContent;
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Saving…';
+      try {
+        const result = onSubmit ? await onSubmit(values) : values;
+        cleanup();
+        dlg.close();
+        resolve(result);
+      } catch (err) {
+        toast(err.message, 'err');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = original;
+      }
+    }
+
+    form.addEventListener('submit', handleSubmit);
+    dlg.addEventListener('close', handleClose);
+  });
+}
+
 function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]

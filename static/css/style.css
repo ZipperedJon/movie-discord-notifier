@@ -196,6 +196,40 @@ td.right, th.right { text-align: right; }
 }
 .preview code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
 
+/* ---------- Inline add (select + button) ---------- */
+.input-with-add { display: flex; gap: 8px; align-items: stretch; }
+.input-with-add > :first-child { flex: 1; min-width: 0; }
+.input-with-add button { flex: 0 0 auto; white-space: nowrap; }
+
+.section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 6px;
+}
+.section-head label { margin-bottom: 0 !important; }
+
+/* ---------- Modal ---------- */
+dialog.modal {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  color: var(--text);
+  padding: 0;
+  width: min(480px, calc(100vw - 32px));
+  box-shadow: 0 24px 60px rgba(0,0,0,.6);
+}
+dialog.modal::backdrop { background: rgba(0,0,0,.6); }
+dialog.modal .modal-head {
+  padding: 18px 20px 0;
+}
+dialog.modal .modal-head h3 { margin: 0 0 4px; font-size: 16px; }
+dialog.modal .modal-head p { margin: 0; color: var(--muted); font-size: 13px; }
+dialog.modal .modal-body { padding: 16px 20px 0; }
+dialog.modal .modal-foot {
+  display: flex; justify-content: flex-end; gap: 10px;
+  padding: 6px 20px 18px;
+}
+dialog.modal .field:last-child { margin-bottom: 6px; }
+
 /* ---------- Toasts ---------- */
 #toasts { position: fixed; right: 20px; bottom: 20px; z-index: 100;
   display: flex; flex-direction: column; gap: 10px; max-width: 380px; }

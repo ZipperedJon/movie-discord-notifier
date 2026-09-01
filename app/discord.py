@@ -1,4 +1,11 @@
-"""Discord webhook posting plus the two message layouts from the reference posts."""
+"""Discord webhook posting plus the two message layouts from the reference posts.
+
+Threading note: posting to a Forum/Media channel webhook with `thread_name` makes
+Discord create a new forum post. With `?wait=true` the response is the created
+message, whose `channel_id` IS that new thread's id. We store it, then every
+follow-up for the same movie — the trailer, the reminder — is sent with
+`?thread_id=<id>` so it lands in the same thread. No bot token required.
+"""
 
 from datetime import datetime, timezone
 from typing import Any
@@ -9,6 +16,9 @@ from .config import poster_url
 from .db import get_settings
 
 EMBED_COLOR = 0x5865F2
+
+TICKET_HEADING = "🎟️Upcoming Ticket"
+UPCOMING_HEADING = "🎥Upcoming Movie"
 
 
 class DiscordError(RuntimeError):
@@ -48,6 +58,10 @@ def _date_epoch(iso_date: str) -> int | None:
         return None
 
 
+def _color(record: dict[str, Any]) -> int:
+    return record.get("accent_color") or EMBED_COLOR
+
+
 # --------------------------------------------------------------------------
 # Webhook transport
 # --------------------------------------------------------------------------
@@ -85,7 +99,13 @@ async def send(
     username: str | None = None,
     avatar_url: str | None = None,
     thread_name: str | None = None,
-) -> None:
+    thread_id: str | None = None,
+) -> dict[str, Any]:
+    """Post one message. Returns {'thread_id', 'message_id'} for the created message.
+
+    thread_id wins over thread_name: once a thread exists we post into it rather
+    than opening another one.
+    """
     url, is_thread = resolve_webhook(kind)
 
     payload: dict[str, Any] = {"allowed_mentions": {"parse": ["users"]}}
@@ -98,30 +118,74 @@ async def send(
     if avatar_url:
         payload["avatar_url"] = avatar_url
 
-    # Forum / media channels require a thread_name — the post becomes a new thread.
-    if is_thread and thread_name:
+    params: dict[str, str] = {"wait": "true"}
+    if thread_id:
+        params["thread_id"] = str(thread_id)
+    elif is_thread and thread_name:
+        # Forum / media channels require a thread name — this opens the post.
         payload["thread_name"] = thread_name[:100]
 
     async with httpx.AsyncClient(timeout=20) as client:
-        resp = await client.post(url, json=payload, params={"wait": "true"})
+        resp = await client.post(url, json=payload, params=params)
 
     if resp.status_code >= 400:
-        detail = resp.text[:400]
-        if is_thread and "thread_name" in detail:
+        raise DiscordError(f"Discord returned {resp.status_code}: {_explain(resp, is_thread)}")
+
+    try:
+        body = resp.json()
+    except ValueError:
+        return {"thread_id": thread_id, "message_id": None}
+
+    # For a forum post, channel_id is the newly created thread — worth keeping.
+    # In a PLAIN TEXT channel, channel_id is just the channel itself; storing that
+    # as a thread_id would make every later post target a non-thread and fail.
+    # So only adopt channel_id when a thread was actually involved.
+    created_thread = None
+    if thread_id:
+        created_thread = str(thread_id)
+    elif is_thread and payload.get("thread_name") and body.get("channel_id"):
+        created_thread = str(body["channel_id"])
+
+    return {
+        "thread_id": created_thread,
+        "message_id": str(body.get("id")) if body.get("id") else None,
+    }
+
+
+def _explain(resp: httpx.Response, is_thread: bool) -> str:
+    """Turn Discord's terser errors into something actionable."""
+    detail = resp.text[:400]
+    if "thread_name" in detail or "thread_id" in detail:
+        if is_thread:
             detail += (
-                "  — this channel may not be a forum channel; try unchecking "
-                "'Threads channel' in Settings."
+                "  — this channel may not be a Forum/Media channel; try unchecking "
+                "'This is a threads channel' in Settings."
             )
-        if not is_thread and "thread_name" in detail:
+        else:
             detail += (
-                "  — this looks like a forum channel; try checking "
-                "'Threads channel' in Settings."
+                "  — this looks like a Forum/Media channel; try checking "
+                "'This is a threads channel' in Settings."
             )
-        raise DiscordError(f"Discord returned {resp.status_code}: {detail}")
+    if resp.status_code == 404:
+        detail += "  — the webhook URL may have been deleted or mistyped."
+    return detail
+
+
+async def _post_trailer(kind: str, trailer_url: str, thread_id: str | None, title: str) -> None:
+    """Follow-up message carrying the bare URL so Discord renders the YouTube player.
+
+    A masked [Trailer](url) link does not unfurl; a bare URL on its own does.
+    """
+    await send(
+        kind,
+        content=trailer_url,
+        username=title,
+        thread_id=thread_id,
+    )
 
 
 # --------------------------------------------------------------------------
-# Layout 1 — Ticket release announcement (rich embed)
+# Layout 1 — Ticket release announcement
 # --------------------------------------------------------------------------
 
 def build_ticket_release(release: dict[str, Any], *, heading: str | None = None) -> dict[str, Any]:
@@ -148,14 +212,12 @@ def build_ticket_release(release: dict[str, Any], *, heading: str | None = None)
         lines.append(f"🎙️ **Studios:** {release['studios']}")
     if _money(release.get("budget")):
         lines.append(f"💵 **Budget:** {_money(release['budget'])}")
-    if release.get("trailer_url"):
-        lines.append(f"🎬 **Trailer:** [Watch on YouTube]({release['trailer_url']})")
 
     embed: dict[str, Any] = {
-        "title": release["title"],
+        "title": f"{TICKET_HEADING}: {release['title']}",
         "url": f"https://www.themoviedb.org/movie/{release['tmdb_id']}",
         "description": "\n".join(lines)[:4096],
-        "color": EMBED_COLOR,
+        "color": _color(release),
     }
     if release.get("poster_path"):
         embed["thumbnail"] = {"url": poster_url(release["poster_path"], "w300")}
@@ -164,18 +226,25 @@ def build_ticket_release(release: dict[str, Any], *, heading: str | None = None)
     return embed
 
 
-async def post_ticket_release(release: dict[str, Any], *, heading: str | None = None) -> None:
-    await send(
+async def post_ticket_release(
+    release: dict[str, Any], *, heading: str | None = None, reuse_thread: bool = True
+) -> dict[str, Any]:
+    title = f"{TICKET_HEADING}: {release['title']}"
+    result = await send(
         "tickets",
         embeds=[build_ticket_release(release, heading=heading)],
         username=release["title"],
         avatar_url=poster_url(release.get("poster_path"), "w185"),
-        thread_name=release["title"],
+        thread_name=title,
+        thread_id=release.get("thread_id") if reuse_thread else None,
     )
+    if release.get("trailer_url"):
+        await _post_trailer("tickets", release["trailer_url"], result["thread_id"], release["title"])
+    return result
 
 
 # --------------------------------------------------------------------------
-# Layout 2 — Upcoming movie / who has tickets (plain content message)
+# Layout 2 — Upcoming movie / who has tickets
 # --------------------------------------------------------------------------
 
 def _extra_tickets_line(count: int) -> str:
@@ -186,17 +255,18 @@ def _extra_tickets_line(count: int) -> str:
     return f"There are **{count}** extra tickets."
 
 
-def build_upcoming(showing: dict[str, Any], *, heading: str | None = None) -> str:
-    title = showing["title"]
-    lines = [f"🎥 **{heading or f'Upcoming Movie: {title}'}**"]
+def build_upcoming(showing: dict[str, Any], *, heading: str | None = None) -> dict[str, Any]:
+    lines: list[str] = []
+    if heading:
+        lines.append(heading)
 
     links = []
-    if showing.get("trailer_url"):
-        links.append(f"[Trailer]({showing['trailer_url']})")
     if showing.get("poster_path"):
         links.append(f"[Poster]({poster_url(showing['poster_path'], 'original')})")
     if showing.get("backdrop_path"):
         links.append(f"[Backdrop]({poster_url(showing['backdrop_path'], 'original')})")
+    if showing.get("trailer_url"):
+        links.append(f"[Trailer]({showing['trailer_url']})")
     if links:
         lines.append(" ◉ ".join(links))
 
@@ -222,27 +292,41 @@ def build_upcoming(showing: dict[str, Any], *, heading: str | None = None) -> st
         parts = [p for p in (showing.get("theater_name"), showing.get("theater_address")) if p]
         lines.append(", ".join(parts))
 
-    return "\n".join(lines)
-
-
-async def post_upcoming(showing: dict[str, Any], *, heading: str | None = None) -> None:
-    embeds = []
+    embed: dict[str, Any] = {
+        "title": f"{UPCOMING_HEADING}: {showing['title']}",
+        "description": "\n".join(lines)[:4096],
+        "color": _color(showing),
+    }
+    if showing.get("tmdb_id"):
+        embed["url"] = f"https://www.themoviedb.org/movie/{showing['tmdb_id']}"
     if showing.get("poster_path"):
-        embeds.append(
-            {"color": EMBED_COLOR, "image": {"url": poster_url(showing["poster_path"], "w500")}}
-        )
-    await send(
+        embed["thumbnail"] = {"url": poster_url(showing["poster_path"], "w300")}
+    if showing.get("backdrop_path"):
+        embed["image"] = {"url": poster_url(showing["backdrop_path"], "w780")}
+    return embed
+
+
+async def post_upcoming(
+    showing: dict[str, Any], *, heading: str | None = None, reuse_thread: bool = True
+) -> dict[str, Any]:
+    title = f"{UPCOMING_HEADING}: {showing['title']}"
+    result = await send(
         "upcoming",
-        content=build_upcoming(showing, heading=heading),
-        embeds=embeds or None,
+        embeds=[build_upcoming(showing, heading=heading)],
         username=showing["title"],
         avatar_url=poster_url(showing.get("poster_path"), "w185"),
-        thread_name=showing["title"],
+        thread_name=title,
+        thread_id=showing.get("thread_id") if reuse_thread else None,
     )
+    if showing.get("trailer_url"):
+        await _post_trailer(
+            "upcoming", showing["trailer_url"], result["thread_id"], showing["title"]
+        )
+    return result
 
 
-async def post_test(kind: str) -> None:
-    await send(
+async def post_test(kind: str) -> dict[str, Any]:
+    return await send(
         kind,
         content=(
             "✅ **Movie Discord Notifier** — webhook test.\n"
