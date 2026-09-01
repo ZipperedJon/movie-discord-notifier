@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ release.title }} · Movie Discord Notifier{% endblock %}
+
+{% block content %}
+<p class="subtitle" style="margin-bottom:10px"><a href="/releases">← Back to ticket releases</a></p>
+<h1>Edit “{{ release.title }}”</h1>
+<p class="subtitle">
+  {% if release.message_id %}
+    Saving updates the original Discord post in place — same message, same thread.
+  {% else %}
+    This one was never posted, so saving will post it fresh.
+  {% endif %}
+</p>
+
+<div class="card">
+  <div class="field picker">
+    <label for="movie-search">Movie <span style="text-transform:none;font-weight:400">(search again to swap it)</span></label>
+    <input type="search" id="movie-search" placeholder="{{ release.title }}" autocomplete="off">
+    <div class="picker-results" id="movie-results"></div>
+  </div>
+  <div class="selected-movie" id="movie-selected">
+    {% if release.poster_path %}<img src="{{ poster_url(release.poster_path, 'w185') }}" alt="">{% endif %}
+    <div class="sm-body">
+      <h4>{{ release.title }}</h4>
+      <div class="sm-meta">{{ release.genres or '—' }}</div>
+      {% if release.trailer_url %}
+      <div><a href="{{ release.trailer_url }}" target="_blank" rel="noopener">▶ Trailer</a></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:16px">
+    <div class="field">
+      <label for="drop-at">Tickets drop at</label>
+      <input type="datetime-local" id="drop-at">
+    </div>
+    <div class="field">
+      <label for="trailer-url">Trailer URL</label>
+      <input type="text" id="trailer-url" value="{{ release.trailer_url or '' }}"
+             placeholder="https://www.youtube.com/watch?v=…">
+    </div>
+  </div>
+
+  <label class="checkbox">
+    <input type="checkbox" id="remind" {{ 'checked' if release.remind }}>
+    <span class="cb-text">Ping the channel again when tickets drop
+      <small>{% if release.reminded_at %}Already sent — re-ticking will not resend it.
+             {% else %}Posts “Tickets are on sale now!” at the time above.{% endif %}</small>
+    </span>
+  </label>
+  <label class="checkbox">
+    <input type="checkbox" id="post-now" checked>
+    <span class="cb-text">Update Discord
+      <small>{% if release.message_id %}Edits the existing post in place.
+             {% else %}Posts it for the first time.{% endif %}</small>
+    </span>
+  </label>
+
+  <div class="actions">
+    <button type="button" id="save-btn">Save changes</button>
+    <a class="btn secondary" href="/releases">Cancel</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const $ = (id) => document.getElementById(id);
+const RELEASE = { id: {{ release.id }}, tmdb_id: {{ release.tmdb_id }}, drop_at: {{ release.drop_at }} };
+
+const picker = new MoviePicker({
+  input: 'movie-search',
+  results: 'movie-results',
+  selected: 'movie-selected',
+  onSelect: (movie) => {
+    $('trailer-url').value = movie.trailer_url || '';
+    toast(`Swapped to “${movie.title}”.`, 'ok');
+  },
+});
+
+$('drop-at').value = epochToInputValue(RELEASE.drop_at);
+
+$('save-btn').addEventListener('click', (e) => busy(e.target, 'Saving…', async () => {
+  const dropAt = localToEpoch($('drop-at').value);
+  if (!dropAt) throw new Error('Choose the date and time tickets drop.');
+
+  const res = await api('PUT', `/api/releases/${RELEASE.id}`, {
+    tmdb_id: picker.movie ? picker.movie.tmdb_id : RELEASE.tmdb_id,
+    drop_at: dropAt,
+    trailer_url: $('trailer-url').value.trim() || null,
+    remind: $('remind').checked,
+    post_now: $('post-now').checked,
+  });
+
+  if (res.warning) {
+    toast(`Saved, but Discord rejected the update: ${res.warning}`, 'warn', 9000);
+  } else if (res.synced) {
+    toast(res.edited ? 'Saved and edited the Discord post.'
+                     : 'Saved and posted an update to the thread.', 'ok');
+  } else {
+    toast('Saved. Discord not updated.', 'ok');
+  }
+  setTimeout(() => { window.location.href = '/releases'; }, 1100);
+}));
+</script>
+{% endblock %}

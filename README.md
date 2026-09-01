@@ -103,6 +103,33 @@ this app only ever posts, a webhook covers it. A bot would only be worth it if y
 wanted interactivity: reaction/button RSVPs, slash commands, or claiming a spare ticket
 by clicking.
 
+## Editing a post after it's up
+
+Every saved entry has an **Edit** button. Change the time, theater, spare tickets,
+who's going — even swap the movie — and saving **edits the original Discord message in
+place** via `PATCH /webhooks/{id}/{token}/messages/{message_id}`. Same message, same
+thread, no duplicate post. The trailer is never re-sent, since it's already in the thread.
+
+If that edit can't go through (the message was deleted in Discord, say), the app posts
+the update **into the same thread** instead of opening a new one, and remembers the new
+message so the next edit targets that. An entry that was never posted just gets posted
+fresh. Untick **Update Discord** to save locally without touching the channel.
+
+### Dropping out is a strikethrough, not a deletion
+
+Unticking someone does not remove them. They stay on the post with their name struck
+through, so the thread keeps a visible record of who backed out:
+
+```
+👥 Got Tickets For:
+Jon - @Jon
+Eli - @Eli
+~~Yakky - No Discord~~
+```
+
+Tick them again and the strike disappears. Under the hood the row is kept and flagged
+`dropped`, never deleted.
+
 ## Reminders
 
 A background loop checks once a minute and posts, **into the movie's thread**:

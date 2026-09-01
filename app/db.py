@@ -75,9 +75,12 @@ CREATE TABLE IF NOT EXISTS showings (
     created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Removing someone from a showing sets dropped = 1 rather than deleting the row,
+-- so the Discord post can strike their name through instead of silently losing it.
 CREATE TABLE IF NOT EXISTS showing_attendees (
     showing_id INTEGER NOT NULL REFERENCES showings(id) ON DELETE CASCADE,
     person_id  INTEGER NOT NULL REFERENCES people(id)   ON DELETE CASCADE,
+    dropped    INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (showing_id, person_id)
 );
 
@@ -124,6 +127,7 @@ MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("showings", "thread_id", "TEXT"),
     ("showings", "message_id", "TEXT"),
     ("showings", "runtime", "INTEGER"),
+    ("showing_attendees", "dropped", "INTEGER NOT NULL DEFAULT 0"),
 )
 
 

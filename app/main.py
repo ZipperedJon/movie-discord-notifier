@@ -38,6 +38,20 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 templates.env.globals["poster_url"] = poster_url
 
 
+def _static_version() -> str:
+    """Newest mtime across static/, appended to asset URLs as ?v=.
+
+    Without this, a browser keeps serving the CSS/JS it cached before an update
+    and the app looks broken until a hard refresh. Recomputed each start, which
+    is exactly when the files can have changed.
+    """
+    times = [p.stat().st_mtime for p in STATIC_DIR.rglob("*") if p.is_file()]
+    return str(int(max(times))) if times else "0"
+
+
+templates.env.globals["static_v"] = _static_version()
+
+
 @app.exception_handler(tmdb.TMDBError)
 async def _tmdb_error(request: Request, exc: tmdb.TMDBError):
     return JSONResponse(status_code=400, content={"detail": str(exc)})
@@ -90,6 +104,30 @@ async def page_upcoming(request: Request):
         people=store.list_people(),
         theaters=store.list_theaters(),
     )
+
+
+@app.get("/upcoming/{showing_id}/edit")
+async def page_edit_showing(request: Request, showing_id: int):
+    showing = store.get_showing(showing_id)
+    if not showing:
+        raise HTTPException(404, "Showing not found.")
+    return _page(
+        request,
+        "edit_showing.html",
+        showing=showing,
+        people=store.list_people(),
+        theaters=store.list_theaters(),
+        attending={a["id"] for a in showing["attendees"] if not a["dropped"]},
+        dropped={a["id"] for a in showing["attendees"] if a["dropped"]},
+    )
+
+
+@app.get("/releases/{release_id}/edit")
+async def page_edit_release(request: Request, release_id: int):
+    release = store.get_release(release_id)
+    if not release:
+        raise HTTPException(404, "Ticket release not found.")
+    return _page(request, "edit_release.html", release=release)
 
 
 @app.get("/people")
@@ -278,6 +316,43 @@ async def api_preview_release(release_id: int):
     return {"embed": discord.build_ticket_release(release)}
 
 
+@app.put("/api/releases/{release_id}")
+async def api_update_release(release_id: int, payload: ReleaseIn):
+    existing = store.get_release(release_id)
+    if not existing:
+        raise HTTPException(404, "Ticket release not found.")
+
+    movie = await tmdb.get_movie(payload.tmdb_id)
+    changed_movie = existing["tmdb_id"] != payload.tmdb_id
+    updates = {
+        **movie,
+        "drop_at": payload.drop_at,
+        "remind": int(payload.remind),
+        "trailer_url": payload.trailer_url or movie.get("trailer_url"),
+        # Only re-derive the colour when the poster actually changed.
+        "accent_color": (
+            await colors.average_color_from_url(poster_url(movie.get("poster_path"), "w185"))
+            if changed_movie or not existing.get("accent_color")
+            else existing["accent_color"]
+        ),
+    }
+    release = store.update_release(release_id, updates)
+
+    synced, edited, warning = False, False, None
+    if payload.post_now:
+        try:
+            result = await discord.sync_ticket_release(release)
+            store.mark_release_posted(release_id, result)
+            synced, edited = True, result.get("edited", False)
+        except discord.DiscordError as exc:
+            warning = str(exc)
+
+    return {
+        "release": store.get_release(release_id),
+        "synced": synced, "edited": edited, "warning": warning,
+    }
+
+
 @app.delete("/api/releases/{release_id}")
 async def api_delete_release(release_id: int):
     store.delete_release(release_id)
@@ -380,6 +455,33 @@ async def api_preview_showing(showing_id: int):
     if not showing:
         raise HTTPException(404, "Showing not found.")
     return {"embed": discord.build_upcoming(showing)}
+
+
+@app.put("/api/showings/{showing_id}")
+async def api_update_showing(showing_id: int, payload: ShowingIn):
+    existing = store.get_showing(showing_id)
+    if not existing:
+        raise HTTPException(404, "Showing not found.")
+
+    record = await _showing_record(payload)
+    if existing["tmdb_id"] == payload.tmdb_id and existing.get("accent_color"):
+        record["accent_color"] = existing["accent_color"]  # poster unchanged, keep the colour
+
+    showing = store.update_showing(showing_id, record, payload.attendee_ids)
+
+    synced, edited, warning = False, False, None
+    if payload.post_now:
+        try:
+            result = await discord.sync_upcoming(showing)
+            store.mark_showing_posted(showing_id, result)
+            synced, edited = True, result.get("edited", False)
+        except discord.DiscordError as exc:
+            warning = str(exc)
+
+    return {
+        "showing": store.get_showing(showing_id),
+        "synced": synced, "edited": edited, "warning": warning,
+    }
 
 
 @app.delete("/api/showings/{showing_id}")

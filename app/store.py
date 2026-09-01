@@ -130,6 +130,18 @@ def create_release(data: dict[str, Any]) -> dict[str, Any]:
     return get_release(new_id)  # type: ignore[return-value]
 
 
+def update_release(release_id: int, data: dict[str, Any]) -> dict[str, Any]:
+    fields = [f for f in RELEASE_FIELDS if f in data]
+    assignments = ", ".join(f"{f} = ?" for f in fields)
+    with cursor() as cur:
+        if fields:
+            cur.execute(
+                f"UPDATE ticket_releases SET {assignments} WHERE id = ?",
+                [*(data[f] for f in fields), release_id],
+            )
+    return get_release(release_id)  # type: ignore[return-value]
+
+
 def delete_release(release_id: int) -> None:
     with cursor() as cur:
         cur.execute("DELETE FROM ticket_releases WHERE id = ?", (release_id,))
@@ -186,11 +198,12 @@ FROM showings s LEFT JOIN theaters t ON t.id = s.theater_id
 
 
 def _attach_attendees(cur, showing: dict[str, Any]) -> dict[str, Any]:
+    """Attendees, still-going first, each flagged with whether they dropped out."""
     showing["attendees"] = rows_to_dicts(
         cur.execute(
-            "SELECT p.id, p.name, p.discord_id FROM showing_attendees a "
+            "SELECT p.id, p.name, p.discord_id, a.dropped FROM showing_attendees a "
             "JOIN people p ON p.id = a.person_id WHERE a.showing_id = ? "
-            "ORDER BY p.name COLLATE NOCASE",
+            "ORDER BY a.dropped ASC, p.name COLLATE NOCASE",
             (showing["id"],),
         ).fetchall()
     )
@@ -222,6 +235,45 @@ def create_showing(data: dict[str, Any], attendee_ids: list[int]) -> dict[str, A
             [(new_id, pid) for pid in attendee_ids],
         )
     return get_showing(new_id)  # type: ignore[return-value]
+
+
+def update_showing(showing_id: int, data: dict[str, Any], attendee_ids: list[int]) -> dict[str, Any]:
+    """Update a showing and reconcile its attendee list.
+
+    Someone taken off the list is marked dropped, never deleted, so the post can
+    strike their name through. Adding them back clears the flag.
+    """
+    fields = [f for f in SHOWING_FIELDS if f in data]
+    assignments = ", ".join(f"{f} = ?" for f in fields)
+    values = [data[f] for f in fields]
+
+    with cursor() as cur:
+        if fields:
+            cur.execute(f"UPDATE showings SET {assignments} WHERE id = ?", [*values, showing_id])
+
+        known = {
+            row["person_id"]: row["dropped"]
+            for row in cur.execute(
+                "SELECT person_id, dropped FROM showing_attendees WHERE showing_id = ?",
+                (showing_id,),
+            )
+        }
+        keep = set(attendee_ids)
+
+        for person_id in keep - set(known):
+            cur.execute(
+                "INSERT INTO showing_attendees(showing_id, person_id, dropped) VALUES(?, ?, 0)",
+                (showing_id, person_id),
+            )
+        for person_id, was_dropped in known.items():
+            should_drop = 0 if person_id in keep else 1
+            if should_drop != was_dropped:
+                cur.execute(
+                    "UPDATE showing_attendees SET dropped = ? WHERE showing_id = ? AND person_id = ?",
+                    (should_drop, showing_id, person_id),
+                )
+
+    return get_showing(showing_id)  # type: ignore[return-value]
 
 
 def delete_showing(showing_id: int) -> None:

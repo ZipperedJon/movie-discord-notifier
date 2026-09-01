@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Movie Discord Notifier{% endblock %}</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/style.css?v={{ static_v }}">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
 </head>
 <body>
@@ -32,7 +32,7 @@
 </div>
 
 <div id="toasts"></div>
-<script src="/static/js/app.js"></script>
+<script src="/static/js/app.js?v={{ static_v }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

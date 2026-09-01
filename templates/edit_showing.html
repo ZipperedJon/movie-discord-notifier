@@ -1,19 +1,33 @@
 {% extends "base.html" %}
-{% block title %}Upcoming Movies · Movie Discord Notifier{% endblock %}
+{% block title %}Edit {{ showing.title }} · Movie Discord Notifier{% endblock %}
 
 {% block content %}
-<h1>Upcoming Movies</h1>
-<p class="subtitle">Movies you already hold tickets for — who is going, how many spares, when and where.</p>
+<p class="subtitle" style="margin-bottom:10px"><a href="/upcoming">← Back to upcoming movies</a></p>
+<h1>Edit “{{ showing.title }}”</h1>
+<p class="subtitle">
+  {% if showing.message_id %}
+    Saving updates the original Discord post in place — same message, same thread.
+  {% else %}
+    This one was never posted, so saving will post it fresh.
+  {% endif %}
+</p>
 
 <div class="card">
-  <h3>New upcoming movie</h3>
-
   <div class="field picker">
-    <label for="movie-search">Movie</label>
-    <input type="search" id="movie-search" placeholder="Start typing a movie title…" autocomplete="off">
+    <label for="movie-search">Movie <span style="text-transform:none;font-weight:400">(search again to swap it)</span></label>
+    <input type="search" id="movie-search" placeholder="{{ showing.title }}" autocomplete="off">
     <div class="picker-results" id="movie-results"></div>
   </div>
-  <div class="selected-movie" id="movie-selected" style="display:none"></div>
+  <div class="selected-movie" id="movie-selected">
+    {% if showing.poster_path %}<img src="{{ poster_url(showing.poster_path, 'w185') }}" alt="">{% endif %}
+    <div class="sm-body">
+      <h4>{{ showing.title }}</h4>
+      <div class="sm-meta">Currently selected{% if showing.runtime %} · {{ showing.runtime }} min{% endif %}</div>
+      {% if showing.trailer_url %}
+      <div><a href="{{ showing.trailer_url }}" target="_blank" rel="noopener">▶ Trailer</a></div>
+      {% endif %}
+    </div>
+  </div>
 
   <div class="row" style="margin-top:16px">
     <div class="field">
@@ -32,18 +46,21 @@
       <div class="input-with-add">
         <select id="theater">
           <option value="">— none —</option>
-          {% for t in theaters %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}
+          {% for t in theaters %}
+          <option value="{{ t.id }}" {{ 'selected' if t.id == showing.theater_id }}>{{ t.name }}</option>
+          {% endfor %}
         </select>
         <button type="button" class="secondary" id="add-theater-btn">＋ Add</button>
       </div>
     </div>
     <div class="field">
       <label for="extra-tickets">Extra tickets</label>
-      <input type="number" id="extra-tickets" min="0" step="1" value="0">
+      <input type="number" id="extra-tickets" min="0" step="1" value="{{ showing.extra_tickets }}">
     </div>
     <div class="field">
       <label for="trailer-url">Trailer URL</label>
-      <input type="text" id="trailer-url" placeholder="https://www.youtube.com/watch?v=…">
+      <input type="text" id="trailer-url" value="{{ showing.trailer_url or '' }}"
+             placeholder="https://www.youtube.com/watch?v=…">
     </div>
   </div>
 
@@ -52,14 +69,19 @@
       <label>Got tickets for</label>
       <button type="button" class="secondary small" id="add-person-btn">＋ Add person</button>
     </div>
+    <p class="hint" style="margin-bottom:10px">
+      Unticking someone does not remove them — they stay on the post with their name
+      <s>struck through</s>. Tick them again to undo it.
+    </p>
     <div class="people-grid" id="people-grid">
       {% for p in people %}
-      <label class="person-chip">
-        <input type="checkbox" class="attendee" value="{{ p.id }}">
+      <label class="person-chip {{ 'is-dropped' if p.id in dropped }}">
+        <input type="checkbox" class="attendee" value="{{ p.id }}" {{ 'checked' if p.id in attending }}>
         <span>
           <span class="pc-name">{{ p.name }}</span><br>
           {% if p.discord_id %}<span class="pc-id">{{ p.discord_id }}</span>
           {% else %}<span class="pc-id none">No Discord</span>{% endif %}
+          {% if p.id in dropped %}<span class="pc-id none"> · dropped out</span>{% endif %}
         </span>
       </label>
       {% endfor %}
@@ -71,66 +93,33 @@
 
   <div class="row">
     <label class="checkbox">
-      <input type="checkbox" id="remind" checked>
+      <input type="checkbox" id="remind" {{ 'checked' if showing.remind }}>
       <span class="cb-text">Post a reminder before showtime
-        <small>Goes into the same Discord thread as the original post.</small>
+        <small>Goes into the same Discord thread.</small>
       </span>
     </label>
     <div class="field">
       <label for="remind-hours">Hours before showtime</label>
-      <input type="number" id="remind-hours" min="1" max="168" step="1" value="1">
+      <input type="number" id="remind-hours" min="1" max="168" step="1" value="{{ showing.remind_hours }}">
     </div>
   </div>
 
   <label class="checkbox">
     <input type="checkbox" id="post-now" checked>
-    <span class="cb-text">Post to Discord now
-      <small>Posts the embed, then the trailer as a second message in the thread.</small>
+    <span class="cb-text">Update Discord
+      <small>{% if showing.message_id %}Edits the existing post in place.
+             {% else %}Posts it for the first time.{% endif %}</small>
     </span>
   </label>
 
   <div class="actions">
-    <button type="button" id="create-btn">Create &amp; post</button>
+    <button type="button" id="save-btn">Save changes</button>
     <button type="button" class="secondary" id="preview-btn">Preview message</button>
-    <button type="button" class="secondary" id="reset-btn">Clear</button>
+    <a class="btn secondary" href="/upcoming">Cancel</a>
   </div>
   <div class="preview" id="preview" style="display:none"></div>
 </div>
 
-<h2>Saved upcoming movies</h2>
-{% if showings %}
-  {% for s in showings %}
-  <div class="entry" data-id="{{ s.id }}">
-    {% if s.poster_path %}<img src="{{ poster_url(s.poster_path, 'w185') }}" alt="">{% endif %}
-    <div class="e-body">
-      <h4>{{ s.title }}
-        {% if s.posted_at %}<span class="badge posted">Posted</span>
-        {% else %}<span class="badge pending">Not posted</span>{% endif %}
-        {% if s.thread_id %}<span class="badge posted">In thread</span>{% endif %}
-        {% if s.reminded_at %}<span class="badge posted">Reminder sent</span>{% endif %}
-      </h4>
-      <div class="e-meta"><strong data-when="{{ s.start_at }}"></strong></div>
-      {% if s.theater_name %}<div class="e-meta">📍 {{ s.theater_name }}{% if s.theater_address %}, {{ s.theater_address }}{% endif %}</div>{% endif %}
-      <div class="e-meta">👥
-        {% set going = s.attendees | rejectattr('dropped') | list %}
-        {% set gone = s.attendees | selectattr('dropped') | list %}
-        {% if going %}{{ going | map(attribute='name') | join(', ') }}{% else %}nobody yet{% endif %}
-        {% if gone %}<s>{{ gone | map(attribute='name') | join(', ') }}</s>{% endif %}
-        · 🎟️ {{ s.extra_tickets }} extra
-      </div>
-    </div>
-    <div class="e-actions">
-      <a class="btn secondary small" href="/upcoming/{{ s.id }}/edit">Edit</a>
-      <button class="small secondary" data-action="post">Post to Discord</button>
-      <button class="small danger" data-action="delete">Delete</button>
-    </div>
-  </div>
-  {% endfor %}
-{% else %}
-  <div class="empty">No upcoming movies yet.</div>
-{% endif %}
-
-<!-- ---------------- Modals ---------------- -->
 <dialog class="modal" id="theater-modal">
   <form method="dialog">
     <div class="modal-head">
@@ -183,24 +172,30 @@
 {% block scripts %}
 <script>
 const $ = (id) => document.getElementById(id);
+const SHOWING = {
+  id: {{ showing.id }},
+  tmdb_id: {{ showing.tmdb_id }},
+  runtime: {{ showing.runtime or 'null' }},
+  start_at: {{ showing.start_at }},
+  end_at: {{ showing.end_at or 'null' }},
+};
 
-// The end time is derived from the movie's TMDB runtime, but the moment the user
-// types their own end time we stop overwriting it.
-let endTouched = false;
+// An existing showing already has an end time, so treat it as user-set: never
+// silently overwrite what was saved unless the movie itself is swapped.
+let endTouched = Boolean(SHOWING.end_at);
 $('end-at').addEventListener('input', () => { endTouched = true; });
 
-function syncEndFromRuntime() {
-  const runtime = picker.movie && picker.movie.runtime;
-  const hint = $('end-hint');
+function currentRuntime() {
+  return picker.movie ? picker.movie.runtime : SHOWING.runtime;
+}
 
-  if (!runtime) {
-    hint.textContent = picker.movie ? '(TMDB has no runtime — set it yourself)' : '(optional)';
-    return;
-  }
+function syncEndFromRuntime() {
+  const runtime = currentRuntime();
+  const hint = $('end-hint');
+  if (!runtime) { hint.textContent = '(no runtime on TMDB — set it yourself)'; return; }
   hint.textContent = endTouched
     ? `(${formatRuntime(runtime)} runtime)`
     : `(auto: ${formatRuntime(runtime)} runtime)`;
-
   if (endTouched) return;
   const startAt = localToEpoch($('start-at').value);
   $('end-at').value = startAt ? epochToInputValue(startAt + runtime * 60) : '';
@@ -211,27 +206,34 @@ const picker = new MoviePicker({
   results: 'movie-results',
   selected: 'movie-selected',
   onSelect: (movie) => {
-    $('movie-selected').style.display = 'flex';
     $('trailer-url').value = movie.trailer_url || '';
+    endTouched = false;          // a different movie means a different runtime
     syncEndFromRuntime();
+    toast(`Swapped to “${movie.title}”.`, 'ok');
   },
 });
 
-$('start-at').value = defaultDateTime(24);
+$('start-at').value = epochToInputValue(SHOWING.start_at);
+$('end-at').value = epochToInputValue(SHOWING.end_at);
 $('start-at').addEventListener('input', syncEndFromRuntime);
-$('end-hint').textContent = '(optional)';
+syncEndFromRuntime();
 
-document.querySelectorAll('[data-when]').forEach((el) => {
-  const epoch = Number(el.dataset.when);
-  el.textContent = `${epochToLocalString(epoch)} (${relativeTime(epoch)})`;
-});
+// Rows saved before runtimes were stored have runtime = null. That is not the
+// same as "TMDB has no runtime", so look it up rather than claiming it's missing.
+if (SHOWING.runtime === null) {
+  $('end-hint').textContent = '(checking runtime…)';
+  api('GET', `/api/tmdb/movie/${SHOWING.tmdb_id}`)
+    .then((movie) => {
+      SHOWING.runtime = movie.runtime;
+      syncEndFromRuntime();
+    })
+    .catch(() => { $('end-hint').textContent = '(optional)'; });
+}
 
-// Cancel buttons just close their dialog; openModal() resolves null on close.
 document.querySelectorAll('dialog.modal [data-cancel]').forEach((btn) => {
   btn.addEventListener('click', () => btn.closest('dialog').close());
 });
 
-// ---- Add theater without leaving the page (form state is untouched) ----
 $('add-theater-btn').addEventListener('click', async () => {
   const created = await openModal('theater-modal', {
     onSubmit: (values) => {
@@ -240,24 +242,20 @@ $('add-theater-btn').addEventListener('click', async () => {
     },
   });
   if (!created) return;
-  const option = new Option(created.name, created.id, true, true);
-  $('theater').add(option);
+  $('theater').add(new Option(created.name, created.id, true, true));
   toast(`Added “${created.name}” and selected it.`, 'ok');
 });
 
-// ---- Add person without leaving the page ----
 $('add-person-btn').addEventListener('click', async () => {
   const created = await openModal('person-modal', {
     onSubmit: (values) => {
       if (!values.name) throw new Error('Enter a name.');
       return api('POST', '/api/people', {
-        name: values.name,
-        discord_id: values.discord_id || null,
+        name: values.name, discord_id: values.discord_id || null,
       });
     },
   });
   if (!created) return;
-
   const chip = document.createElement('label');
   chip.className = 'person-chip';
   chip.innerHTML = `<input type="checkbox" class="attendee" value="${created.id}" checked>
@@ -270,15 +268,14 @@ $('add-person-btn').addEventListener('click', async () => {
   toast(`Added ${created.name} and ticked them.`, 'ok');
 });
 
-function payload() {
-  if (!picker.movie) throw new Error('Pick a movie first.');
+function payload(postNow) {
   const startAt = localToEpoch($('start-at').value);
   if (!startAt) throw new Error('Choose a start date and time.');
   const endAt = localToEpoch($('end-at').value);
   if (endAt && endAt <= startAt) throw new Error('The end time must be after the start time.');
 
   return {
-    tmdb_id: picker.movie.tmdb_id,
+    tmdb_id: picker.movie ? picker.movie.tmdb_id : SHOWING.tmdb_id,
     start_at: startAt,
     end_at: endAt,
     theater_id: $('theater').value ? Number($('theater').value) : null,
@@ -287,60 +284,29 @@ function payload() {
     trailer_url: $('trailer-url').value.trim() || null,
     remind: $('remind').checked,
     remind_hours: Number($('remind-hours').value) || 1,
-    post_now: $('post-now').checked,
+    post_now: postNow,
   };
 }
 
-$('reset-btn').addEventListener('click', () => {
-  picker.reset();
-  $('movie-selected').style.display = 'none';
-  $('trailer-url').value = '';
-  $('end-at').value = '';
-  $('extra-tickets').value = '0';
-  $('remind-hours').value = '1';
-  $('preview').style.display = 'none';
-  document.querySelectorAll('.attendee:checked').forEach((c) => { c.checked = false; });
-  $('start-at').value = defaultDateTime(24);
-  endTouched = false;
-  $('end-hint').textContent = '(optional)';
-});
-
-// Rendered server-side by the same builder that posts to Discord, so the
-// preview is exactly what the channel would receive. Nothing is saved.
 $('preview-btn').addEventListener('click', (e) => busy(e.target, 'Building…', async () => {
-  const { embed } = await api('POST', '/api/showings/preview', payload());
+  const { embed } = await api('POST', '/api/showings/preview', payload(false));
   const box = $('preview');
   box.textContent = `${embed.title}\n\n${embed.description}`;
   box.style.borderLeftColor = '#' + (embed.color ?? 0x5865f2).toString(16).padStart(6, '0');
   box.style.display = '';
 }));
 
-$('create-btn').addEventListener('click', (e) => busy(e.target, 'Working…', async () => {
-  const res = await api('POST', '/api/showings', payload());
+$('save-btn').addEventListener('click', (e) => busy(e.target, 'Saving…', async () => {
+  const res = await api('PUT', `/api/showings/${SHOWING.id}`, payload($('post-now').checked));
   if (res.warning) {
-    toast(`Saved, but Discord rejected the post: ${res.warning}`, 'warn', 9000);
+    toast(`Saved, but Discord rejected the update: ${res.warning}`, 'warn', 9000);
+  } else if (res.synced) {
+    toast(res.edited ? 'Saved and edited the Discord post.'
+                     : 'Saved and posted an update to the thread.', 'ok');
   } else {
-    toast(res.posted ? 'Created and posted to Discord.' : 'Saved. Not posted yet.', 'ok');
+    toast('Saved. Discord not updated.', 'ok');
   }
-  setTimeout(() => location.reload(), 900);
+  setTimeout(() => { window.location.href = '/upcoming'; }, 1100);
 }));
-
-document.querySelectorAll('.entry').forEach((entry) => {
-  const id = entry.dataset.id;
-  entry.querySelector('[data-action="post"]').addEventListener('click', (e) =>
-    busy(e.target, 'Posting…', async () => {
-      const res = await api('POST', `/api/showings/${id}/post`);
-      toast(res.message, 'ok');
-      setTimeout(() => location.reload(), 900);
-    }));
-  entry.querySelector('[data-action="delete"]').addEventListener('click', (e) => {
-    if (!confirm('Delete this upcoming movie? This does not remove anything already posted to Discord.')) return;
-    busy(e.target, 'Deleting…', async () => {
-      await api('DELETE', `/api/showings/${id}`);
-      entry.remove();
-      toast('Deleted.', 'ok');
-    });
-  });
-});
 </script>
 {% endblock %}

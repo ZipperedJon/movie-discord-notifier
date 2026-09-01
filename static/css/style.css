@@ -112,11 +112,12 @@ button, .btn {
 }
 button:hover, .btn:hover { background: var(--accent-hi); text-decoration: none; }
 button:disabled { opacity: .5; cursor: not-allowed; }
-button.secondary { background: var(--bg-4); }
-button.secondary:hover { background: #43464d; }
-button.danger { background: transparent; color: var(--red); border: 1px solid var(--red); }
-button.danger:hover { background: var(--red); color: #fff; }
-button.small { padding: 5px 11px; font-size: 12.5px; }
+/* These must cover <a class="btn"> too, not just <button>. */
+button.secondary, .btn.secondary { background: var(--bg-4); color: var(--text); }
+button.secondary:hover, .btn.secondary:hover { background: #43464d; }
+button.danger, .btn.danger { background: transparent; color: var(--red); border: 1px solid var(--red); }
+button.danger:hover, .btn.danger:hover { background: var(--red); color: #fff; }
+button.small, .btn.small { padding: 5px 11px; font-size: 12.5px; }
 
 .actions { display: flex; gap: 10px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
 
@@ -159,6 +160,13 @@ button.small { padding: 5px 11px; font-size: 12.5px; }
 .person-chip .pc-name { font-weight: 600; font-size: 14px; }
 .person-chip .pc-id { color: var(--muted); font-size: 11.5px; font-family: ui-monospace, Consolas, monospace; }
 .person-chip .pc-id.none { color: var(--amber); font-family: var(--font); }
+
+/* Someone taken off the list: kept, struck through, never deleted. */
+.person-chip.is-dropped { border-style: dashed; opacity: .72; }
+.person-chip.is-dropped .pc-name { text-decoration: line-through; }
+
+.entry .e-meta s { color: var(--muted); opacity: .8; }
+.e-actions .btn.small { text-align: center; }
 
 /* ---------- Lists / tables ---------- */
 table { width: 100%; border-collapse: collapse; }

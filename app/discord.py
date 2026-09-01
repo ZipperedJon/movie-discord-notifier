@@ -7,6 +7,7 @@ follow-up for the same movie — the trailer, the reminder — is sent with
 `?thread_id=<id>` so it lands in the same thread. No bot token required.
 """
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -14,6 +15,8 @@ import httpx
 
 from .config import poster_url
 from .db import get_settings
+
+log = logging.getLogger("discord")
 
 EMBED_COLOR = 0x5865F2
 
@@ -162,6 +165,37 @@ async def send(
     }
 
 
+async def edit_message(
+    kind: str,
+    message_id: str,
+    thread_id: str | None = None,
+    *,
+    content: str | None = None,
+    embeds: list[dict[str, Any]] | None = None,
+) -> None:
+    """Edit a message this webhook posted earlier.
+
+    PATCH /webhooks/{id}/{token}/messages/{message_id}. Username and avatar are
+    fixed at creation and cannot be changed here, which is fine — only the body
+    ever changes. A message inside a thread needs ?thread_id= to be found.
+    """
+    url, _ = resolve_webhook(kind)
+
+    payload: dict[str, Any] = {"allowed_mentions": {"parse": ["users"]}}
+    payload["content"] = content[:2000] if content else ""
+    payload["embeds"] = embeds or []
+
+    params = {"thread_id": str(thread_id)} if thread_id else {}
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.patch(f"{url}/messages/{message_id}", json=payload, params=params)
+
+    if resp.status_code >= 400:
+        raise DiscordError(
+            f"Could not edit the Discord message ({resp.status_code}): {resp.text[:300]}"
+        )
+
+
 def _explain(resp: httpx.Response, is_thread: bool) -> str:
     """Turn Discord's terser errors into something actionable."""
     detail = resp.text[:400]
@@ -297,11 +331,19 @@ def build_upcoming(showing: dict[str, Any], *, heading: str | None = None) -> di
 
     lines.append("👥 **Got Tickets For:**")
     attendees = showing.get("attendees") or []
-    if attendees:
-        for person in attendees:
+    going = [p for p in attendees if not p.get("dropped")]
+    dropped = [p for p in attendees if p.get("dropped")]
+
+    if going:
+        for person in going:
             lines.append(f"{person['name']} - {mention(person.get('discord_id'))}")
     else:
         lines.append("Nobody has tickets yet.")
+
+    # Someone who backed out is struck through rather than removed, so the thread
+    # keeps a visible record of the change.
+    for person in dropped:
+        lines.append(f"~~{person['name']} - {mention(person.get('discord_id'))}~~")
 
     lines.append("🎟️ **Extra Tickets:**")
     lines.append(_extra_tickets_line(showing.get("extra_tickets") or 0))
@@ -354,6 +396,52 @@ async def post_upcoming(
             showing.get("poster_path"),
         )
     return result
+
+
+# --------------------------------------------------------------------------
+# Re-sync after an edit
+#
+# Preferred path is editing the original message in place. If that message is
+# gone (deleted in Discord, or never posted) we post an update instead — into
+# the same thread when there is one, so the movie stays in one conversation.
+# The trailer is never re-sent on an edit; it is already in the thread.
+# --------------------------------------------------------------------------
+
+async def _sync(
+    kind: str, record: dict[str, Any], embed: dict[str, Any], full_post
+) -> dict[str, Any]:
+    if record.get("message_id"):
+        try:
+            await edit_message(
+                kind, record["message_id"], record.get("thread_id"), embeds=[embed]
+            )
+            return {
+                "thread_id": record.get("thread_id"),
+                "message_id": record["message_id"],
+                "edited": True,
+            }
+        except DiscordError as exc:
+            log.warning("Editing %s failed, posting an update instead: %s", record["title"], exc)
+
+    if record.get("thread_id"):
+        result = await send(
+            kind,
+            embeds=[embed],
+            username=record["title"],
+            avatar_url=poster_url(record.get("poster_path"), "w185"),
+            thread_id=record["thread_id"],
+        )
+        return {**result, "edited": False}
+
+    return {**await full_post(record), "edited": False}
+
+
+async def sync_ticket_release(release: dict[str, Any]) -> dict[str, Any]:
+    return await _sync("tickets", release, build_ticket_release(release), post_ticket_release)
+
+
+async def sync_upcoming(showing: dict[str, Any]) -> dict[str, Any]:
+    return await _sync("upcoming", showing, build_upcoming(showing), post_upcoming)
 
 
 async def post_test(kind: str) -> dict[str, Any]:
