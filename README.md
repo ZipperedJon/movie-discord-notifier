@@ -28,26 +28,57 @@ end up before the start.
 
 ---
 
+## Install on a Raspberry Pi (or any systemd Linux)
+
+One line. Installs to `/opt/movie-discord-notifier`, runs it as a locked-down system
+user under systemd, and starts it on boot:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ZipperedJon/movie-discord-notifier/main/install.sh | sudo bash
+```
+
+When it finishes it prints your Pi's address — open that and fill in the **Settings**
+page. Nothing else to configure.
+
+The installer handles everything: installs `git`/`python3-venv` if missing, creates a
+virtualenv, and if a Pillow wheel isn't available for your architecture it pulls the
+image build dependencies and retries rather than failing.
+
+| | |
+|---|---|
+| Status | `sudo systemctl status movie-notifier` |
+| Logs | `sudo journalctl -u movie-notifier -f` |
+| Restart | `sudo systemctl restart movie-notifier` |
+| Update | `sudo /opt/movie-discord-notifier/install.sh --update` |
+| Uninstall | `sudo /opt/movie-discord-notifier/install.sh --uninstall` |
+
+Uninstalling keeps your database and copies it to `/root/` first; add `--purge` to
+remove it too. Options: `--host=127.0.0.1` (this machine only), `--port=9000`.
+
+> **The app has no login.** It listens on your whole LAN by default so you can reach
+> the Pi from your laptop, which is fine at home — but don't port-forward it to the
+> internet, since anyone reaching it could read your webhook URLs. Use
+> `--host=127.0.0.1` to keep it local to the Pi.
+
+<details>
+<summary>Manual install / running it on Windows or macOS</summary>
+
+Requires Python 3.10+.
+
+```bash
+pip install -r requirements.txt
+python run.py
+```
+
+Then open <http://127.0.0.1:8000>. Flags: `--port 9000`, `--host 0.0.0.0` to expose it
+on your network, `--reload` while developing.
+</details>
+
 ## Requirements
 
 - Python 3.10+
 - A [TMDB API key](https://www.themoviedb.org/settings/api) (free)
 - At least one Discord webhook URL
-
-## Setup
-
-```bash
-pip install -r requirements.txt
-```
-
-```bash
-python run.py
-```
-
-Then open <http://127.0.0.1:8000> and fill in the **Settings** page.
-
-Useful flags: `python run.py --port 9000 --reload`, or `--host 0.0.0.0` to reach it
-from other machines on your network.
 
 ## Settings
 

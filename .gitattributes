@@ -1,0 +1,15 @@
+# Keep LF in the repo regardless of the platform it was committed from.
+# install.sh is executed by bash on Linux — CRLF would make it fail with
+# "bad interpreter: /usr/bin/env bash^M".
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.py   text eol=lf
+*.html text eol=lf
+*.css  text eol=lf
+*.js   text eol=lf
+*.md   text eol=lf
+
+*.png binary
+*.jpg binary
+*.db  binary
