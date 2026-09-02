@@ -28,10 +28,10 @@
     <tbody>
       {% for p in people %}
       <tr data-person="{{ p.id }}">
-        <td><input type="text" class="f-name" value="{{ p.name }}"></td>
-        <td><input type="text" class="f-id" value="{{ p.discord_id or '' }}" placeholder="— none —"></td>
-        <td><code>{% if p.discord_id %}&lt;@{{ p.discord_id }}&gt;{% else %}No Discord{% endif %}</code></td>
-        <td class="right">
+        <td data-label="Name"><input type="text" class="f-name" value="{{ p.name }}"></td>
+        <td data-label="Discord ID"><input type="text" class="f-id" value="{{ p.discord_id or '' }}" placeholder="— none —"></td>
+        <td data-label="Preview"><code>{% if p.discord_id %}&lt;@{{ p.discord_id }}&gt;{% else %}No Discord{% endif %}</code></td>
+        <td class="right actions-cell">
           <button class="small secondary" data-action="save">Save</button>
           <button class="small danger" data-action="delete">Delete</button>
         </td>
@@ -62,9 +62,9 @@
     <tbody>
       {% for t in theaters %}
       <tr data-theater="{{ t.id }}">
-        <td><input type="text" class="f-name" value="{{ t.name }}"></td>
-        <td><input type="text" class="f-address" value="{{ t.address }}"></td>
-        <td class="right">
+        <td data-label="Name"><input type="text" class="f-name" value="{{ t.name }}"></td>
+        <td data-label="Address"><input type="text" class="f-address" value="{{ t.address }}"></td>
+        <td class="right actions-cell">
           <button class="small secondary" data-action="save">Save</button>
           <button class="small danger" data-action="delete">Delete</button>
         </td>

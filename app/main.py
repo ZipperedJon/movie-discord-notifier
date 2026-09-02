@@ -6,12 +6,12 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from . import colors, discord, scheduler, store, tmdb, trailers, updater
+from . import colors, discord, ics, scheduler, store, tmdb, trailers, updater
 from .config import STATIC_DIR, TEMPLATES_DIR, TMDB_API_KEY_URL, poster_url
 from .db import get_settings, init_db, save_settings
 
@@ -140,6 +140,72 @@ async def page_people(request: Request):
 @app.get("/settings")
 async def page_settings(request: Request):
     return _page(request, "settings.html")
+
+
+# ==========================================================================
+# Calendar (.ics)
+# ==========================================================================
+
+def _ics_response(body: str, filename: str, *, download: bool) -> Response:
+    # A subscribed feed must not be cached, or the calendar app keeps showing
+    # times that have since been edited.
+    disposition = "attachment" if download else "inline"
+    return Response(
+        content=body,
+        media_type="text/calendar; charset=utf-8",
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{filename}"',
+            "Cache-Control": "no-cache, must-revalidate",
+        },
+    )
+
+
+def _safe_name(title: str) -> str:
+    keep = "".join(ch if ch.isalnum() or ch in " -_" else "" for ch in title).strip()
+    return (keep or "event").replace(" ", "-")[:60]
+
+
+@app.get("/calendar.ics", include_in_schema=False)
+async def calendar_feed(showings: bool = True, releases: bool = True):
+    """Whole-calendar feed, meant to be subscribed to rather than downloaded."""
+    events = []
+    if showings:
+        events += [ics.showing_event(s) for s in store.list_showings()]
+    if releases:
+        events += [ics.release_event(r) for r in store.list_releases()]
+    return _ics_response(ics.build(events), "movie-nights.ics", download=False)
+
+
+@app.get("/upcoming/{showing_id}.ics", include_in_schema=False)
+async def showing_ics(showing_id: int):
+    showing = store.get_showing(showing_id)
+    if not showing:
+        raise HTTPException(404, "Showing not found.")
+    body = ics.build([ics.showing_event(showing)], name=showing["title"])
+    return _ics_response(body, f"{_safe_name(showing['title'])}.ics", download=True)
+
+
+@app.get("/releases/{release_id}.ics", include_in_schema=False)
+async def release_ics(release_id: int):
+    release = store.get_release(release_id)
+    if not release:
+        raise HTTPException(404, "Ticket release not found.")
+    body = ics.build([ics.release_event(release)], name=release["title"])
+    return _ics_response(body, f"{_safe_name(release['title'])}-tickets.ics", download=True)
+
+
+@app.get("/sw.js", include_in_schema=False)
+async def service_worker():
+    """Served from the root on purpose.
+
+    A worker at /static/sw.js could only control /static/*; it has to be at the
+    root to take scope over the whole app.
+    """
+    return FileResponse(
+        STATIC_DIR / "sw.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 # ==========================================================================

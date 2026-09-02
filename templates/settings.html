@@ -77,6 +77,27 @@
   </div>
 
   <div class="card">
+    <h3>📅 Calendar</h3>
+    <p class="hint">
+      Subscribe your phone or desktop calendar to this link and every movie night and
+      ticket drop shows up automatically, updating whenever you change one. Each entry
+      also has its own <strong>📅 Calendar</strong> button for a one-off download.
+    </p>
+    <div class="field">
+      <label for="ics-url">Subscription link</label>
+      <div class="input-with-add">
+        <input type="text" id="ics-url" readonly value="">
+        <button type="button" class="secondary" id="copy-ics">Copy</button>
+      </div>
+    </div>
+    <p class="hint" style="margin-bottom:0">
+      iPhone: Calendar → Calendars → Add Calendar → Add Subscription Calendar.
+      Google Calendar: Other calendars → From URL. Both need to reach this machine, so
+      use it on your home network (or over a VPN).
+    </p>
+  </div>
+
+  <div class="card">
     <h3>🔄 Updates</h3>
     <p class="hint">
       Pulls the latest code from
@@ -143,6 +164,23 @@ function collect() {
     update_interval_hours: Number($('update_interval_hours').value) || 6,
   };
 }
+
+// ---------------------------------------------------------------- Calendar
+// Built from the address you're already using, so it is reachable from wherever
+// you loaded this page.
+$('ics-url').value = `${location.origin}/calendar.ics`;
+
+$('copy-ics').addEventListener('click', async (e) => {
+  const url = $('ics-url').value;
+  try {
+    await navigator.clipboard.writeText(url);
+    toast('Subscription link copied.', 'ok');
+  } catch {
+    // Clipboard needs HTTPS or localhost; over plain LAN http it is blocked.
+    $('ics-url').select();
+    toast('Press Ctrl/Cmd+C to copy — the link is selected.', 'warn');
+  }
+});
 
 // ---------------------------------------------------------------- Updates
 function renderUpdate(info) {

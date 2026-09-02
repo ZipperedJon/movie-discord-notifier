@@ -1,5 +1,63 @@
 /* Shared helpers: fetch wrapper, toasts, the TMDB movie picker, date handling. */
 
+// ---------------------------------------------------------------- Mobile nav
+(function navDrawer() {
+  const toggle = document.getElementById('nav-toggle');
+  const scrim = document.getElementById('nav-scrim');
+  const sidebar = document.getElementById('sidebar');
+  if (!toggle || !scrim || !sidebar) return;
+
+  const isOpen = () => document.body.classList.contains('nav-open');
+
+  function open() {
+    document.body.classList.add('nav-open');
+    document.body.style.overflow = 'hidden';   // don't scroll the page behind
+    scrim.hidden = false;
+    requestAnimationFrame(() => scrim.classList.add('show'));
+    toggle.setAttribute('aria-expanded', 'true');
+    toggle.setAttribute('aria-label', 'Close menu');
+    const first = sidebar.querySelector('a');
+    if (first) first.focus({ preventScroll: true });
+  }
+
+  function close({ restoreFocus = true } = {}) {
+    document.body.classList.remove('nav-open');
+    document.body.style.overflow = '';
+    scrim.classList.remove('show');
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-label', 'Open menu');
+    // Keep the scrim in the DOM until the fade finishes.
+    setTimeout(() => { if (!isOpen()) scrim.hidden = true; }, 240);
+    if (restoreFocus) toggle.focus({ preventScroll: true });
+  }
+
+  toggle.addEventListener('click', () => (isOpen() ? close() : open()));
+  scrim.addEventListener('click', () => close());
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isOpen()) close();
+  });
+
+  // Following a link navigates away; closing first avoids a flash of the
+  // drawer sliding shut over the new page.
+  sidebar.querySelectorAll('a').forEach((a) =>
+    a.addEventListener('click', () => close({ restoreFocus: false })));
+
+  // Rotating to landscape / resizing past the breakpoint reveals the permanent
+  // sidebar, so drop the open state and the scroll lock with it.
+  window.addEventListener('resize', () => {
+    if (isOpen() && window.innerWidth > 820) close({ restoreFocus: false });
+  });
+})();
+
+// Registered for home-screen installs. It is deliberately network-only: caching
+// pages here would fight the ?v= asset busting and serve stale UI after updates.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+
 // ---------------------------------------------------------------- API
 async function api(method, url, body) {
   const opts = { method, headers: {} };

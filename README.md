@@ -199,6 +199,33 @@ Eli - @Eli
 Tick them again and the strike disappears. Under the hood the row is kept and flagged
 `dropped`, never deleted.
 
+## On a phone
+
+The layout is built for a phone as much as a desktop. Under 820px the sidebar becomes a
+slide-out drawer behind a hamburger, forms drop to a single column, tap targets grow,
+inputs use 16px text so iOS doesn't zoom on focus, and the people/theater tables restack
+as cards instead of scrolling sideways. Notches and home indicators are handled with
+safe-area insets.
+
+**Add it to your home screen** (iOS: Share → Add to Home Screen; Android: menu → Install)
+and it opens full-screen with its own icon, no browser chrome. A manifest and a
+deliberately cache-free service worker back that — nothing is cached, so a self-updating
+app can never serve you a version it already replaced.
+
+## Calendar
+
+Every showing and ticket release can go in your calendar.
+
+- **📅 Calendar** on any entry downloads a single `.ics`.
+- **Settings → Calendar** gives a subscription link (`/calendar.ics`). Subscribe once
+  and everything appears automatically and stays in step as you edit — times, theater,
+  who's going, spare tickets.
+
+Events carry the theater as the location, who's going (and who dropped out) in the
+description, a link back to TMDB, and an alarm matching the movie's reminder setting.
+A showing with no end time uses the TMDB runtime. Your calendar app needs to reach the
+Pi, so use it on your home network or over a VPN.
+
 ## Keeping it up to date
 
 The app updates itself. It checks GitHub every few hours and, if **Update

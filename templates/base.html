@@ -2,14 +2,35 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}Movie Discord Notifier{% endblock %}</title>
   <link rel="stylesheet" href="/static/css/style.css?v={{ static_v }}">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+
+  <!-- Home-screen install -->
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <meta name="theme-color" content="#1a1b1e">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Movies">
+  <link rel="icon" href="/static/icons/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/static/icons/icon-180.png">
 </head>
 <body>
+
+<!-- Phone-only bar. The sidebar becomes a drawer behind the hamburger. -->
+<header class="topbar">
+  <button type="button" id="nav-toggle" class="icon-btn" aria-label="Open menu"
+          aria-expanded="false" aria-controls="sidebar">
+    <span class="burger" aria-hidden="true"><i></i><i></i><i></i></span>
+  </button>
+  <span class="topbar-title">{% block topbar %}Movie Notifier{% endblock %}</span>
+</header>
+
+<div class="scrim" id="nav-scrim" hidden></div>
+
 <div class="shell">
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
     <div class="brand"><span class="logo">🎬</span> Movie Notifier</div>
     <nav class="nav">
       <a href="/"          class="{{ 'active' if request.url.path == '/' }}">📊 Dashboard</a>
