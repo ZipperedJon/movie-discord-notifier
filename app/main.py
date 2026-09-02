@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -80,14 +81,71 @@ def _page(request: Request, name: str, **ctx: Any):
     )
 
 
+def _release_is_over(release: dict[str, Any], now: int) -> bool:
+    return int(release["drop_at"]) < now
+
+
+def _showing_is_over(showing: dict[str, Any], now: int) -> bool:
+    """Over once it has finished, not once it has started — a movie you are
+    currently sitting in should still be on the dashboard."""
+    ends = showing.get("end_at")
+    if not ends:
+        minutes = showing.get("runtime") or 120
+        ends = int(showing["start_at"]) + minutes * 60
+    return int(ends) < now
+
+
 @app.get("/")
 async def page_dashboard(request: Request):
+    # Epoch comparison, so this is timezone-independent.
+    now = int(time.time())
+
+    releases = store.list_releases()
+    showings = store.list_showings()
+
+    upcoming_releases = [r for r in releases if not _release_is_over(r, now)]
+    past_releases = [r for r in releases if _release_is_over(r, now)]
+    upcoming_showings = [s for s in showings if not _showing_is_over(s, now)]
+    past_showings = [s for s in showings if _showing_is_over(s, now)]
+
+    # Soonest first for things still ahead; most recent first for things behind.
+    upcoming_releases.sort(key=lambda r: r["drop_at"])
+    upcoming_showings.sort(key=lambda s: s["start_at"])
+
     return _page(
         request,
         "dashboard.html",
-        releases=store.list_releases(),
-        showings=store.list_showings(),
+        releases=upcoming_releases,
+        showings=upcoming_showings,
+        past_releases=past_releases,
+        past_showings=past_showings,
     )
+
+
+@app.get("/api/calendar/events")
+async def api_calendar_events():
+    """Flat event list for the dashboard month view.
+
+    Times stay as epochs so the browser can bucket them into days in the
+    viewer's own timezone rather than the Pi's.
+    """
+    events = [
+        {
+            "kind": "release", "id": r["id"], "title": r["title"],
+            "at": r["drop_at"], "end": None,
+            "poster_path": r["poster_path"], "href": "/releases",
+        }
+        for r in store.list_releases()
+    ] + [
+        {
+            "kind": "showing", "id": s["id"], "title": s["title"],
+            "at": s["start_at"], "end": s["end_at"],
+            "poster_path": s["poster_path"], "href": "/upcoming",
+        }
+        for s in store.list_showings()
+    ]
+    events.sort(key=lambda e: e["at"])
+    return {"events": events}
 
 
 @app.get("/releases")

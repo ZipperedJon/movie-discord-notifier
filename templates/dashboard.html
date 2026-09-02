@@ -1,9 +1,34 @@
 {% extends "base.html" %}
 {% block title %}Dashboard · Movie Discord Notifier{% endblock %}
+{% block topbar %}Dashboard{% endblock %}
+
+{% macro entry(item, kind) %}
+<div class="entry{{ ' is-past' if kind == 'past' }}">
+  {% if item.poster_path %}<img src="{{ poster_url(item.poster_path, 'w185') }}" alt="">{% endif %}
+  <div class="e-body">
+    <h4>{{ item.title }}
+      {% if item.posted_at %}<span class="badge posted">Posted</span>
+      {% else %}<span class="badge pending">Not posted</span>{% endif %}
+    </h4>
+    {% if item.drop_at %}
+      <div class="e-meta">Tickets drop <strong data-when="{{ item.drop_at }}"></strong></div>
+      <div class="e-meta">{{ item.genres or '—' }}</div>
+    {% else %}
+      <div class="e-meta"><strong data-when="{{ item.start_at }}"></strong></div>
+      {% if item.theater_name %}<div class="e-meta">📍 {{ item.theater_name }}</div>{% endif %}
+      <div class="e-meta">👥
+        {% set going = item.attendees | rejectattr('dropped') | list %}
+        {% if going %}{{ going | map(attribute='name') | join(', ') }}{% else %}nobody yet{% endif %}
+        · 🎟️ {{ item.extra_tickets }} extra
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
 
 {% block content %}
 <h1>Dashboard</h1>
-<p class="subtitle">Everything on the calendar, newest first.</p>
+<p class="subtitle">What's coming up. Anything that has already happened is tucked away.</p>
 
 {% if not configured %}
 <div class="card" style="border-color:var(--amber)">
@@ -13,48 +38,55 @@
 </div>
 {% endif %}
 
+<div class="card cal-card">
+  <div class="cal-head">
+    <button type="button" class="icon-btn" id="cal-prev" aria-label="Previous month">‹</button>
+    <h3 id="cal-title">…</h3>
+    <button type="button" class="icon-btn" id="cal-next" aria-label="Next month">›</button>
+    <button type="button" class="secondary small" id="cal-today">Today</button>
+  </div>
+  <div class="cal-grid" id="cal-grid" role="grid" aria-labelledby="cal-title"></div>
+  <div class="cal-legend">
+    <span><i class="dot release"></i> Tickets drop</span>
+    <span><i class="dot showing"></i> Movie night</span>
+  </div>
+  <div class="cal-detail" id="cal-detail" hidden></div>
+</div>
+
 <h2>🎟️ Ticket releases</h2>
 {% if releases %}
-  {% for r in releases[:8] %}
-  <div class="entry">
-    {% if r.poster_path %}<img src="{{ poster_url(r.poster_path, 'w185') }}" alt="">{% endif %}
-    <div class="e-body">
-      <h4>{{ r.title }}
-        {% if r.posted_at %}<span class="badge posted">Posted</span>
-        {% else %}<span class="badge pending">Not posted</span>{% endif %}
-      </h4>
-      <div class="e-meta">Tickets drop <strong data-when="{{ r.drop_at }}"></strong></div>
-      <div class="e-meta">{{ r.genres or '—' }}</div>
-    </div>
-  </div>
-  {% endfor %}
+  {% for r in releases[:8] %}{{ entry(r, 'upcoming') }}{% endfor %}
   <div class="actions"><a href="/releases">Manage ticket releases →</a></div>
 {% else %}
-  <div class="empty">Nothing yet. <a href="/releases">Add a ticket release →</a></div>
+  <div class="empty">
+    Nothing upcoming.
+    {% if past_releases %}All {{ past_releases | length }} ticket drop{{ 's have' if past_releases | length != 1 else ' has' }} already happened.{% endif %}
+    <a href="/releases">Add a ticket release →</a>
+  </div>
+{% endif %}
+{% if past_releases %}
+<details class="past-block">
+  <summary>Show {{ past_releases | length }} past ticket release{{ 's' if past_releases | length != 1 }}</summary>
+  {% for r in past_releases[:10] %}{{ entry(r, 'past') }}{% endfor %}
+</details>
 {% endif %}
 
 <h2>🎥 Upcoming movies</h2>
 {% if showings %}
-  {% for s in showings[:8] %}
-  <div class="entry">
-    {% if s.poster_path %}<img src="{{ poster_url(s.poster_path, 'w185') }}" alt="">{% endif %}
-    <div class="e-body">
-      <h4>{{ s.title }}
-        {% if s.posted_at %}<span class="badge posted">Posted</span>
-        {% else %}<span class="badge pending">Not posted</span>{% endif %}
-      </h4>
-      <div class="e-meta"><strong data-when="{{ s.start_at }}"></strong></div>
-      {% if s.theater_name %}<div class="e-meta">📍 {{ s.theater_name }}</div>{% endif %}
-      <div class="e-meta">👥
-        {% if s.attendees %}{{ s.attendees | map(attribute='name') | join(', ') }}{% else %}nobody yet{% endif %}
-        · 🎟️ {{ s.extra_tickets }} extra
-      </div>
-    </div>
-  </div>
-  {% endfor %}
+  {% for s in showings[:8] %}{{ entry(s, 'upcoming') }}{% endfor %}
   <div class="actions"><a href="/upcoming">Manage upcoming movies →</a></div>
 {% else %}
-  <div class="empty">Nothing yet. <a href="/upcoming">Add an upcoming movie →</a></div>
+  <div class="empty">
+    Nothing upcoming.
+    {% if past_showings %}All {{ past_showings | length }} movie night{{ 's have' if past_showings | length != 1 else ' has' }} already happened.{% endif %}
+    <a href="/upcoming">Add an upcoming movie →</a>
+  </div>
+{% endif %}
+{% if past_showings %}
+<details class="past-block">
+  <summary>Show {{ past_showings | length }} past movie night{{ 's' if past_showings | length != 1 }}</summary>
+  {% for s in past_showings[:10] %}{{ entry(s, 'past') }}{% endfor %}
+</details>
 {% endif %}
 {% endblock %}
 
@@ -64,5 +96,147 @@ document.querySelectorAll('[data-when]').forEach((el) => {
   const epoch = Number(el.dataset.when);
   el.textContent = `${epochToLocalString(epoch)} (${relativeTime(epoch)})`;
 });
+
+// ---------------------------------------------------------------- Month view
+// Events are bucketed by LOCAL date: the API hands back epochs precisely so the
+// grouping happens in the viewer's timezone, not the Pi's.
+const $ = (id) => document.getElementById(id);
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+let events = [];
+let cursor = new Date();
+cursor.setDate(1);
+
+const dayKey = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+function byDay() {
+  const map = new Map();
+  for (const ev of events) {
+    const key = dayKey(new Date(ev.at * 1000));
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(ev);
+  }
+  return map;
+}
+
+function render() {
+  const grid = $('cal-grid');
+  const buckets = byDay();
+  const todayKey = dayKey(new Date());
+  const month = cursor.getMonth();
+
+  $('cal-title').textContent =
+    cursor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+
+  grid.innerHTML = '';
+  for (const name of WEEKDAYS) {
+    const head = document.createElement('div');
+    head.className = 'cal-wd';
+    head.textContent = name;
+    grid.appendChild(head);
+  }
+
+  // Start on the Sunday on or before the 1st, and always draw whole weeks.
+  const start = new Date(cursor);
+  start.setDate(1 - start.getDay());
+
+  for (let i = 0; i < 42; i += 1) {
+    const day = new Date(start);
+    day.setDate(start.getDate() + i);
+    // Stop once we've covered the month and finished the week.
+    if (i >= 35 && day.getMonth() !== month) break;
+
+    const key = dayKey(day);
+    const cell = document.createElement('div');
+    cell.className = 'cal-cell';
+    cell.dataset.key = key;
+    if (day.getMonth() !== month) cell.classList.add('other-month');
+    if (key === todayKey) cell.classList.add('today');
+
+    const num = document.createElement('div');
+    num.className = 'cal-day-num';
+    num.textContent = day.getDate();
+    cell.appendChild(num);
+
+    const list = buckets.get(key) || [];
+    if (list.length) {
+      cell.classList.add('has-events');
+      const wrap = document.createElement('div');
+      wrap.className = 'cal-events';
+      for (const ev of list.slice(0, 3)) {
+        const pill = document.createElement('span');
+        pill.className = `cal-ev ${ev.kind}`;
+        pill.innerHTML =
+          `<i class="dot ${ev.kind}"></i><span class="cal-ev-label">${escapeHtml(ev.title)}</span>`;
+        wrap.appendChild(pill);
+      }
+      if (list.length > 3) {
+        const more = document.createElement('span');
+        more.className = 'cal-more';
+        more.textContent = `+${list.length - 3}`;
+        wrap.appendChild(more);
+      }
+      cell.appendChild(wrap);
+      cell.tabIndex = 0;
+      cell.setAttribute('role', 'button');
+      cell.addEventListener('click', () => showDay(key, day));
+      cell.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showDay(key, day); }
+      });
+    }
+    grid.appendChild(cell);
+  }
+}
+
+function showDay(key, day) {
+  const list = byDay().get(key) || [];
+  const box = $('cal-detail');
+  document.querySelectorAll('.cal-cell.selected').forEach((c) => c.classList.remove('selected'));
+  const cell = document.querySelector(`.cal-cell[data-key="${key}"]`);
+  if (cell) cell.classList.add('selected');
+
+  if (!list.length) { box.hidden = true; return; }
+  const heading = day.toLocaleDateString(undefined,
+    { weekday: 'long', month: 'long', day: 'numeric' });
+
+  box.innerHTML = `<div class="cal-detail-head">${escapeHtml(heading)}</div>` +
+    list.map((ev) => `
+      <a class="cal-detail-row" href="${ev.href}">
+        ${ev.poster_path
+          ? `<img src="https://image.tmdb.org/t/p/w92${ev.poster_path}" alt="">`
+          : '<span class="cal-detail-noposter"></span>'}
+        <span class="cal-detail-body">
+          <span class="cal-detail-title">${ev.kind === 'release' ? '🎟️' : '🎥'} ${escapeHtml(ev.title)}</span>
+          <span class="cal-detail-time">${escapeHtml(epochToLocalString(ev.at))}</span>
+        </span>
+      </a>`).join('');
+  box.hidden = false;
+}
+
+function move(delta) {
+  cursor = new Date(cursor.getFullYear(), cursor.getMonth() + delta, 1);
+  $('cal-detail').hidden = true;
+  render();
+}
+
+$('cal-prev').addEventListener('click', () => move(-1));
+$('cal-next').addEventListener('click', () => move(1));
+$('cal-today').addEventListener('click', () => {
+  cursor = new Date();
+  cursor.setDate(1);
+  $('cal-detail').hidden = true;
+  render();
+  const key = dayKey(new Date());
+  const cell = document.querySelector(`.cal-cell[data-key="${key}"]`);
+  if (cell && cell.classList.contains('has-events')) showDay(key, new Date());
+});
+
+api('GET', '/api/calendar/events')
+  .then((data) => { events = data.events || []; render(); })
+  .catch((err) => {
+    $('cal-title').textContent = 'Calendar unavailable';
+    $('cal-grid').innerHTML = `<div class="empty" style="grid-column:1/-1">${escapeHtml(err.message)}</div>`;
+  });
 </script>
 {% endblock %}

@@ -199,6 +199,19 @@ Eli - @Eli
 Tick them again and the strike disappears. Under the hood the row is kept and flagged
 `dropped`, never deleted.
 
+## The dashboard
+
+A month grid at the top shows what's coming at a glance — amber dots for ticket drops,
+blue for movie nights — with arrows to page through months and a **Today** button. Tap
+any day to see what's on it. On a phone the grid collapses to dots, since seven columns
+can't fit titles, and tapping a day lists them underneath.
+
+Below that, the lists show **only what hasn't happened yet**, soonest first, so finished
+movie nights and ticket drops stop filling the page. Nothing is deleted: each section
+gets a *"Show N past…"* toggle. A movie you're currently sitting in still counts as
+upcoming — it drops off the list once it has finished, not once it has started. The
+calendar keeps showing everything, past months included.
+
 ## On a phone
 
 The layout is built for a phone as much as a desktop. Under 820px the sidebar becomes a
