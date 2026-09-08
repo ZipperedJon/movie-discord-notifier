@@ -11,7 +11,7 @@ import asyncio
 import logging
 import time
 
-from . import discord, store, updater
+from . import discord, store, tmdb, updater
 from .config import SCHEDULER_INTERVAL_SECONDS
 from .db import get_settings
 
@@ -48,6 +48,26 @@ async def run_once() -> None:
             log.warning("Showing reminder for %s failed: %s", showing["title"], exc)
 
 
+async def backfill_release_dates() -> None:
+    """Fill release_date on showings saved before that column existed.
+
+    A few per pass so a long list trickles in without hammering TMDB, and
+    skipped entirely without a key. Rows TMDB has no date for get an empty
+    string so they are not retried forever.
+    """
+    if not (get_settings().get("tmdb_api_key") or "").strip():
+        return
+
+    for row in store.showings_missing_release_date(limit=3):
+        try:
+            movie = await tmdb.get_movie(row["tmdb_id"], find_trailer=False)
+        except tmdb.TMDBError as exc:
+            log.warning("Backfill for %s failed: %s", row["title"], exc)
+            return  # a bad key or no network: stop, try again next pass
+        store.set_showing_release_date(row["id"], movie.get("release_date"))
+        log.info("Backfilled release date for %s: %s", row["title"], movie.get("release_date"))
+
+
 async def maybe_auto_update() -> None:
     """Check GitHub on the configured interval, not on every minute-long pass."""
     global _last_update_check
@@ -75,6 +95,13 @@ async def loop() -> None:
             raise
         except Exception:  # keep the loop alive through any unexpected error
             log.exception("Scheduler pass failed")
+
+        try:
+            await backfill_release_dates()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("Release-date backfill failed")
 
         try:
             await maybe_auto_update()

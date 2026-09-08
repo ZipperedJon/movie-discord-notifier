@@ -212,6 +212,21 @@ gets a *"Show N past…"* toggle. A movie you're currently sitting in still coun
 upcoming — it drops off the list once it has finished, not once it has started. The
 calendar keeps showing everything, past months included.
 
+## Sorting the lists
+
+Both saved lists have a **Sort by** control. Upcoming movies sorts by showtime, the
+movie's own release date, title, theater, number of ticket holders, or recently added —
+each direction available. Ticket releases sorts by drop time, movie release date, title
+or recently added.
+
+Sorting happens in the page, so it is instant, and your choice is remembered per list.
+Rows missing a value (no theater, no known release date) always sort last rather than
+bunching at the top. The control only appears once there is more than one row.
+
+Showings now store the movie's release date. Entries saved before that get theirs filled
+in automatically by a background pass a few at a time, so sorting by release date works
+on your existing list, not just new additions.
+
 ## On a phone
 
 The layout is built for a phone as much as a desktop. Under 820px the sidebar becomes a

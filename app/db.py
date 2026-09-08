@@ -134,6 +134,9 @@ MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     # The trailer follow-up message, so an edit can update or replace it.
     ("showings", "trailer_message_id", "TEXT"),
     ("ticket_releases", "trailer_message_id", "TEXT"),
+    # The movie's own theatrical release date, so the list can sort by it.
+    # Backfilled from TMDB for rows saved before this existed.
+    ("showings", "release_date", "TEXT"),
 )
 
 

@@ -196,7 +196,8 @@ def due_release_reminders(now_epoch: int) -> list[dict[str, Any]]:
 
 SHOWING_FIELDS = (
     "tmdb_id", "title", "poster_path", "backdrop_path", "trailer_url", "accent_color",
-    "runtime", "start_at", "end_at", "theater_id", "extra_tickets", "remind", "remind_hours",
+    "runtime", "release_date", "start_at", "end_at", "theater_id", "extra_tickets",
+    "remind", "remind_hours",
 )
 
 _SHOWING_SELECT = """
@@ -304,6 +305,33 @@ def mark_showing_posted(showing_id: int, thread: dict[str, Any] | None = None) -
                 thread.get("trailer_message_id"),
                 showing_id,
             ),
+        )
+
+
+def showings_missing_release_date(limit: int = 3) -> list[dict[str, Any]]:
+    """Rows saved before release_date existed, for the background backfill.
+
+    NULL means "never looked up". An empty string means "looked up, TMDB has no
+    date for it" — those must NOT come back here, or the backfill would refetch
+    the same undated movie on every pass forever.
+    """
+    with cursor() as cur:
+        return rows_to_dicts(
+            cur.execute(
+                "SELECT id, tmdb_id, title FROM showings "
+                "WHERE release_date IS NULL ORDER BY id LIMIT ?",
+                (limit,),
+            ).fetchall()
+        )
+
+
+def set_showing_release_date(showing_id: int, release_date: str | None) -> None:
+    # Empty string, not NULL, when TMDB genuinely has no date — otherwise the
+    # backfill would keep retrying the same row forever.
+    with cursor() as cur:
+        cur.execute(
+            "UPDATE showings SET release_date = ? WHERE id = ?",
+            (release_date or "", showing_id),
         )
 
 

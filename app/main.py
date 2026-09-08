@@ -584,6 +584,9 @@ async def _showing_record(payload: ShowingIn) -> dict[str, Any]:
             poster_url(movie.get("poster_path"), "w185")
         ),
         "runtime": runtime,
+        # "" rather than None when TMDB has no date: NULL means "not looked up
+        # yet" and would put the row back in the backfill queue every minute.
+        "release_date": movie.get("release_date") or "",
         "start_at": payload.start_at,
         "end_at": end_at,
         "theater_id": payload.theater_id,

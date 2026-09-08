@@ -100,10 +100,40 @@
   <div class="preview" id="preview" style="display:none"></div>
 </div>
 
-<h2>Saved upcoming movies</h2>
+<div class="list-head">
+  <h2>Saved upcoming movies</h2>
+  {% if showings | length > 1 %}
+  <div class="sort-box">
+    <label for="sort-showings">Sort by</label>
+    <!-- values are dataset keys of data-sk-* attributes on each row -->
+    <select id="sort-showings">
+      <option value="skWhen:asc"     data-numeric="1">Showtime — soonest first</option>
+      <option value="skWhen:desc"    data-numeric="1">Showtime — latest first</option>
+      <option value="skReleased:desc">Movie release — newest first</option>
+      <option value="skReleased:asc">Movie release — oldest first</option>
+      <option value="skTitle:asc">Title — A to Z</option>
+      <option value="skTitle:desc">Title — Z to A</option>
+      <option value="skTheater:asc">Theater</option>
+      <option value="skPeople:desc"  data-numeric="1">Most ticket holders</option>
+      <option value="skAdded:desc"   data-numeric="1">Recently added</option>
+    </select>
+  </div>
+  {% endif %}
+</div>
+
 {% if showings %}
+<div id="showing-list">
   {% for s in showings %}
-  <div class="entry" data-id="{{ s.id }}">
+  {% set going = s.attendees | rejectattr('dropped') | list %}
+  <!-- data-sk-* are sort keys. Deliberately NOT data-when: that attribute is
+       claimed by the timestamp renderer, which would overwrite this element. -->
+  <div class="entry" data-id="{{ s.id }}"
+       data-sk-when="{{ s.start_at }}"
+       data-sk-released="{{ s.release_date or '' }}"
+       data-sk-title="{{ s.title }}"
+       data-sk-theater="{{ s.theater_name or '' }}"
+       data-sk-people="{{ going | length }}"
+       data-sk-added="{{ s.id }}">
     {% if s.poster_path %}<img src="{{ poster_url(s.poster_path, 'w185') }}" alt="">{% endif %}
     <div class="e-body">
       <h4>{{ s.title }}
@@ -115,7 +145,6 @@
       <div class="e-meta"><strong data-when="{{ s.start_at }}"></strong></div>
       {% if s.theater_name %}<div class="e-meta">📍 {{ s.theater_name }}{% if s.theater_address %}, {{ s.theater_address }}{% endif %}</div>{% endif %}
       <div class="e-meta">👥
-        {% set going = s.attendees | rejectattr('dropped') | list %}
         {% set gone = s.attendees | selectattr('dropped') | list %}
         {% if going %}{{ going | map(attribute='name') | join(', ') }}{% else %}nobody yet{% endif %}
         {% if gone %}<s>{{ gone | map(attribute='name') | join(', ') }}</s>{% endif %}
@@ -130,6 +159,7 @@
     </div>
   </div>
   {% endfor %}
+</div>
 {% else %}
   <div class="empty">No upcoming movies yet.</div>
 {% endif %}
@@ -213,6 +243,14 @@ $('end-hint').textContent = '(optional)';
 document.querySelectorAll('[data-when]').forEach((el) => {
   const epoch = Number(el.dataset.when);
   el.textContent = `${epochToLocalString(epoch)} (${relativeTime(epoch)})`;
+});
+
+new SortableList({
+  select: 'sort-showings',
+  container: 'showing-list',
+  rowSelector: '.entry',
+  storageKey: 'mdn.sort.showings',
+  fallback: 'skWhen',
 });
 
 // Cancel buttons just close their dialog; openModal() resolves null on close.

@@ -443,6 +443,70 @@ function openModal(dialogId, { onSubmit } = {}) {
   });
 }
 
+/**
+ * Sorts an already-rendered list in place.
+ *
+ * Reordering the existing nodes rather than re-fetching keeps every handler
+ * (Post, Delete, …) attached and needs no round trip. Sort keys ride along as
+ * data-* attributes on each row. The choice is remembered per list.
+ */
+class SortableList {
+  constructor({ select, container, rowSelector, storageKey, fallback }) {
+    this.select = document.getElementById(select);
+    this.container = document.getElementById(container);
+    this.rowSelector = rowSelector;
+    this.storageKey = storageKey;
+    this.fallback = fallback;
+    if (!this.select || !this.container) return;
+
+    let saved = null;
+    try { saved = localStorage.getItem(storageKey); } catch { /* private mode */ }
+    if (saved && [...this.select.options].some((o) => o.value === saved)) {
+      this.select.value = saved;
+    }
+
+    this.select.addEventListener('change', () => {
+      try { localStorage.setItem(storageKey, this.select.value); } catch { /* ignore */ }
+      this.apply();
+    });
+    this.apply();
+  }
+
+  /** Missing values always sort last, whichever direction is chosen. */
+  static compare(a, b, numeric, dir) {
+    const missingA = a === '' || a === undefined || a === null;
+    const missingB = b === '' || b === undefined || b === null;
+    if (missingA && missingB) return 0;
+    if (missingA) return 1;
+    if (missingB) return -1;
+
+    let result;
+    if (numeric) {
+      result = Number(a) - Number(b);
+    } else {
+      result = String(a).localeCompare(String(b), undefined, { sensitivity: 'base' });
+    }
+    return dir === 'desc' ? -result : result;
+  }
+
+  apply() {
+    const [field, dir] = this.select.value.split(':');
+    const numeric = this.select.selectedOptions[0]?.dataset.numeric === '1';
+    const rows = [...this.container.querySelectorAll(this.rowSelector)];
+
+    rows.sort((rowA, rowB) => {
+      const primary = SortableList.compare(
+        rowA.dataset[field], rowB.dataset[field], numeric, dir);
+      if (primary !== 0) return primary;
+      // Tie-break on a stable secondary key so equal values don't shuffle.
+      return SortableList.compare(
+        rowA.dataset[this.fallback], rowB.dataset[this.fallback], true, 'asc');
+    });
+
+    for (const row of rows) this.container.appendChild(row);
+  }
+}
+
 function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]

@@ -45,10 +45,32 @@
   </div>
 </div>
 
-<h2>Saved ticket releases</h2>
+<div class="list-head">
+  <h2>Saved ticket releases</h2>
+  {% if releases | length > 1 %}
+  <div class="sort-box">
+    <label for="sort-releases">Sort by</label>
+    <select id="sort-releases">
+      <option value="skWhen:asc"     data-numeric="1">Drop time — soonest first</option>
+      <option value="skWhen:desc"    data-numeric="1">Drop time — latest first</option>
+      <option value="skReleased:desc">Movie release — newest first</option>
+      <option value="skReleased:asc">Movie release — oldest first</option>
+      <option value="skTitle:asc">Title — A to Z</option>
+      <option value="skTitle:desc">Title — Z to A</option>
+      <option value="skAdded:desc"   data-numeric="1">Recently added</option>
+    </select>
+  </div>
+  {% endif %}
+</div>
+
 {% if releases %}
+<div id="release-list">
   {% for r in releases %}
-  <div class="entry" data-id="{{ r.id }}">
+  <div class="entry" data-id="{{ r.id }}"
+       data-sk-when="{{ r.drop_at }}"
+       data-sk-released="{{ r.release_date or '' }}"
+       data-sk-title="{{ r.title }}"
+       data-sk-added="{{ r.id }}">
     {% if r.poster_path %}<img src="{{ poster_url(r.poster_path, 'w185') }}" alt="">{% endif %}
     <div class="e-body">
       <h4>{{ r.title }}
@@ -69,6 +91,7 @@
     </div>
   </div>
   {% endfor %}
+</div>
 {% else %}
   <div class="empty">No ticket releases yet.</div>
 {% endif %}
@@ -94,6 +117,14 @@ $('drop-at').value = defaultDateTime(24);
 document.querySelectorAll('[data-when]').forEach((el) => {
   const epoch = Number(el.dataset.when);
   el.textContent = `${epochToLocalString(epoch)} (${relativeTime(epoch)})`;
+});
+
+new SortableList({
+  select: 'sort-releases',
+  container: 'release-list',
+  rowSelector: '.entry',
+  storageKey: 'mdn.sort.releases',
+  fallback: 'skWhen',
 });
 
 $('reset-btn').addEventListener('click', () => {
