@@ -98,6 +98,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "auto_update": True,
     "update_interval_hours": 6,
     "last_update_check": "",
+    "accent_color_mode": "primary",
 }
 
 
@@ -137,6 +138,10 @@ MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     # The movie's own theatrical release date, so the list can sort by it.
     # Backfilled from TMDB for rows saved before this existed.
     ("showings", "release_date", "TEXT"),
+    # Which colour mode + algorithm the stored accent_color came from, so
+    # changing the mode in Settings can recompute exactly the stale rows.
+    ("showings", "color_mode", "TEXT"),
+    ("ticket_releases", "color_mode", "TEXT"),
 )
 
 

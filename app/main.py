@@ -81,6 +81,16 @@ def _page(request: Request, name: str, **ctx: Any):
     )
 
 
+def _color_mode() -> str:
+    mode = get_settings().get("accent_color_mode") or colors.DEFAULT_MODE
+    return mode if mode in colors.MODES else colors.DEFAULT_MODE
+
+
+def _color_stamp() -> str:
+    """Mode + algorithm, stored per row so a change can recompute just the stale ones."""
+    return f"{_color_mode()}:{colors.ALGO}"
+
+
 def _release_is_over(release: dict[str, Any], now: int) -> bool:
     return int(release["drop_at"]) < now
 
@@ -279,6 +289,7 @@ class SettingsIn(BaseModel):
     upcoming_is_thread: bool = False
     auto_update: bool = True
     update_interval_hours: int = Field(default=6, ge=1, le=168)
+    accent_color_mode: str = colors.DEFAULT_MODE
 
 
 @app.get("/api/settings")
@@ -288,7 +299,55 @@ async def api_get_settings():
 
 @app.put("/api/settings")
 async def api_put_settings(payload: SettingsIn):
-    return save_settings(payload.model_dump())
+    data = payload.model_dump()
+    if data.get("accent_color_mode") not in colors.MODES:
+        raise HTTPException(400, "Unknown accent colour mode.")
+    return save_settings(data)
+
+
+@app.get("/api/color-preview")
+async def api_color_preview(tmdb_id: int | None = None):
+    """Every colour mode for one poster, so the settings page can show them side by side.
+
+    Uses one of your own saved movies when there is one, so the preview reflects
+    the sort of posters you actually post.
+    """
+    sample = None
+    if tmdb_id:
+        try:
+            movie = await tmdb.get_movie(tmdb_id, find_trailer=False)
+            sample = {"title": movie["title"], "poster_path": movie["poster_path"]}
+        except tmdb.TMDBError:
+            sample = None
+
+    if not sample:
+        for row in [*store.list_showings(), *store.list_releases()]:
+            if row.get("poster_path"):
+                sample = {"title": row["title"], "poster_path": row["poster_path"]}
+                break
+
+    if not sample:
+        # Nothing saved yet — a fixed, well-known poster still demonstrates it.
+        sample = {"title": "Sample poster", "poster_path": "/8b8R8l88Qje9dn9OE8PY05Nxl1X.jpg"}
+
+    url = poster_url(sample["poster_path"], "w185")
+    found = await colors.all_modes_from_url(url)
+
+    return {
+        "title": sample["title"],
+        "poster_url": url,
+        "current": _color_mode(),
+        "modes": [
+            {
+                "id": mode,
+                "label": label,
+                "description": description,
+                "hex": colors.to_hex(found.get(mode)),
+                "available": mode in found,
+            }
+            for mode, (label, description) in colors.MODES.items()
+        ],
+    }
 
 
 @app.post("/api/settings/test-tmdb")
@@ -458,9 +517,10 @@ async def api_create_release(payload: ReleaseIn):
         "drop_at": payload.drop_at,
         "remind": int(payload.remind),
         "trailer_url": await _resolve_trailer(payload.trailer_url, movie),
-        "accent_color": await colors.average_color_from_url(
-            poster_url(movie.get("poster_path"), "w185")
+        "accent_color": await colors.poster_color_from_url(
+            poster_url(movie.get("poster_path"), "w185"), _color_mode()
         ),
+        "color_mode": _color_stamp(),
     }
     release = store.create_release(record)
 
@@ -509,10 +569,12 @@ async def api_update_release(release_id: int, payload: ReleaseIn):
         "trailer_url": await _resolve_trailer(payload.trailer_url, movie),
         # Only re-derive the colour when the poster actually changed.
         "accent_color": (
-            await colors.average_color_from_url(poster_url(movie.get("poster_path"), "w185"))
+            await colors.poster_color_from_url(
+                poster_url(movie.get("poster_path"), "w185"), _color_mode())
             if changed_movie or not existing.get("accent_color")
             else existing["accent_color"]
         ),
+        "color_mode": _color_stamp(),
     }
     release = store.update_release(release_id, updates)
     repost = payload.force_repost or changed_movie
@@ -580,9 +642,10 @@ async def _showing_record(payload: ShowingIn) -> dict[str, Any]:
         "poster_path": movie["poster_path"],
         "backdrop_path": movie["backdrop_path"],
         "trailer_url": await _resolve_trailer(payload.trailer_url, movie),
-        "accent_color": await colors.average_color_from_url(
-            poster_url(movie.get("poster_path"), "w185")
+        "accent_color": await colors.poster_color_from_url(
+            poster_url(movie.get("poster_path"), "w185"), _color_mode()
         ),
+        "color_mode": _color_stamp(),
         "runtime": runtime,
         # "" rather than None when TMDB has no date: NULL means "not looked up
         # yet" and would put the row back in the backfill queue every minute.

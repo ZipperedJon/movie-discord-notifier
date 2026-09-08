@@ -10,8 +10,26 @@ Two kinds of post:
 | 🎟️ **Upcoming Ticket** | "Tickets for *Dune* drop Tuesday 8:40 AM" — a rich embed with the poster, synopsis, genres, studio and budget pulled from TMDB | Tickets webhook |
 | 🎥 **Upcoming Movie** | "We have tickets for *Backrooms*" — who's going (with `@mentions`), spare tickets, showtime and theater address | Upcoming webhook |
 
-Both are rich embeds whose left sidebar is tinted with the **average colour of the
-movie's poster**, so each movie's post takes on its own look.
+Both are rich embeds whose left stripe is taken **from the movie's poster**, so each
+post takes on its own look. Settings → **Embed colour** picks how, showing every option
+against one of your own posters:
+
+| Mode | What it picks |
+|---|---|
+| **Primary** (default) | The colour you'd name if asked what colour the poster is |
+| Light vibrant | The brightest bold colour on it |
+| Dark vibrant | The deepest bold colour on it |
+| Muted | Dominant but subdued |
+| Most common | Whatever covers the most area, unfiltered — usually the dark background |
+| Average | Mean of every pixel |
+| Discord blurple | No extraction |
+
+Average is what a naive implementation gives you, and it is almost always a muddy brown
+or grey, because posters are mostly dark background. Akira's poster, for instance, reads
+as deep red `#8D1B14` under **Primary** but a washed-out `#CABEBF` under **Average**.
+
+Changing the mode recolours your saved movies in the background. Posts already on
+Discord keep their stripe until you re-post or edit them.
 
 Times are posted as native Discord timestamps, so everyone sees them in their own
 timezone with a live "in 3 days" counter.

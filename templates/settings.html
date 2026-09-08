@@ -77,6 +77,30 @@
   </div>
 
   <div class="card">
+    <h3>🎨 Embed colour</h3>
+    <p class="hint">
+      The stripe down the left of every Discord post is taken from the movie's poster.
+      Pick how. Changing this recolours your saved movies in the background — posts
+      already on Discord keep their stripe until you re-post or edit them.
+    </p>
+
+    <div class="swatch-preview">
+      <div class="swatch-poster">
+        <img id="cp-poster" alt="" src=""
+             style="visibility:hidden">
+        <span id="cp-title" class="hint"></span>
+      </div>
+      <div class="swatch-list" id="cp-modes">
+        <div class="hint" style="margin:0">Loading poster colours…</div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button type="button" class="secondary" id="cp-other">Try another poster</button>
+    </div>
+  </div>
+
+  <div class="card">
     <h3>📅 Calendar</h3>
     <p class="hint">
       Subscribe your phone or desktop calendar to this link and every movie night and
@@ -162,8 +186,61 @@ function collect() {
     upcoming_is_thread: $('upcoming_is_thread').checked,
     auto_update: $('auto_update').checked,
     update_interval_hours: Number($('update_interval_hours').value) || 6,
+    accent_color_mode: colorMode,
   };
 }
+
+// ---------------------------------------------------------------- Embed colour
+// Every mode is computed server-side from one poster download, so switching
+// between them is instant and shows the real colour, not an approximation.
+let colorMode = {{ (settings.accent_color_mode or 'primary') | tojson }};
+
+function renderModes(data) {
+  $('cp-poster').src = data.poster_url || '';
+  $('cp-poster').style.visibility = data.poster_url ? 'visible' : 'hidden';
+  $('cp-title').textContent = data.title || '';
+
+  $('cp-modes').innerHTML = data.modes.map((m) => `
+    <button type="button" class="swatch ${m.id === colorMode ? 'active' : ''}"
+            data-mode="${m.id}" title="${escapeHtml(m.description)}">
+      <span class="swatch-chip" style="background:${m.hex}"></span>
+      <span class="swatch-text">
+        <span class="swatch-label">${escapeHtml(m.label)}</span>
+        <span class="swatch-hex">${m.hex}</span>
+      </span>
+    </button>`).join('');
+
+  $('cp-modes').querySelectorAll('.swatch').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      colorMode = btn.dataset.mode;
+      $('cp-modes').querySelectorAll('.swatch').forEach((b) =>
+        b.classList.toggle('active', b === btn));
+      toast('Pick saved when you hit “Save settings”.', 'warn', 3500);
+    });
+  });
+}
+
+// Cycle through your own saved movies, so the preview uses posters you'd actually post.
+let sampleIndex = 0;
+async function loadPreview(tmdbId) {
+  try {
+    const qs = tmdbId ? `?tmdb_id=${tmdbId}` : '';
+    renderModes(await api('GET', `/api/color-preview${qs}`));
+  } catch (err) {
+    $('cp-modes').innerHTML = `<div class="hint" style="margin:0">${escapeHtml(err.message)}</div>`;
+  }
+}
+
+$('cp-other').addEventListener('click', (e) => busy(e.target, '…', async () => {
+  const { showings } = await api('GET', '/api/showings');
+  const { releases } = await api('GET', '/api/releases');
+  const ids = [...showings, ...releases].filter((r) => r.poster_path).map((r) => r.tmdb_id);
+  if (!ids.length) { toast('Add a movie first and its poster will show up here.', 'warn'); return; }
+  sampleIndex = (sampleIndex + 1) % ids.length;
+  await loadPreview(ids[sampleIndex]);
+}));
+
+loadPreview();
 
 // ---------------------------------------------------------------- Calendar
 // Built from the address you're already using, so it is reachable from wherever

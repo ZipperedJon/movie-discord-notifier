@@ -100,7 +100,7 @@ def delete_theater(theater_id: int) -> None:
 
 RELEASE_FIELDS = (
     "tmdb_id", "title", "tagline", "overview", "release_date", "genres", "studios",
-    "budget", "poster_path", "backdrop_path", "trailer_url", "accent_color",
+    "budget", "poster_path", "backdrop_path", "trailer_url", "accent_color", "color_mode",
     "drop_at", "remind",
 )
 
@@ -196,7 +196,7 @@ def due_release_reminders(now_epoch: int) -> list[dict[str, Any]]:
 
 SHOWING_FIELDS = (
     "tmdb_id", "title", "poster_path", "backdrop_path", "trailer_url", "accent_color",
-    "runtime", "release_date", "start_at", "end_at", "theater_id", "extra_tickets",
+    "color_mode", "runtime", "release_date", "start_at", "end_at", "theater_id", "extra_tickets",
     "remind", "remind_hours",
 )
 
@@ -305,6 +305,31 @@ def mark_showing_posted(showing_id: int, thread: dict[str, Any] | None = None) -
                 thread.get("trailer_message_id"),
                 showing_id,
             ),
+        )
+
+
+def rows_with_stale_color(stamp: str, limit: int = 5) -> list[dict[str, Any]]:
+    """Showings and releases whose accent colour predates the current mode."""
+    out: list[dict[str, Any]] = []
+    with cursor() as cur:
+        for table, kind in (("showings", "showing"), ("ticket_releases", "release")):
+            rows = cur.execute(
+                f"SELECT id, title, poster_path FROM {table} "
+                "WHERE poster_path IS NOT NULL AND poster_path != '' "
+                "AND (color_mode IS NULL OR color_mode != ?) ORDER BY id LIMIT ?",
+                (stamp, limit),
+            ).fetchall()
+            out.extend({**dict(r), "kind": kind, "table": table} for r in rows)
+    return out[:limit]
+
+
+def set_accent_color(table: str, row_id: int, color: int | None, stamp: str) -> None:
+    if table not in ("showings", "ticket_releases"):
+        raise ValueError(f"unexpected table: {table}")
+    with cursor() as cur:
+        cur.execute(
+            f"UPDATE {table} SET accent_color = ?, color_mode = ? WHERE id = ?",
+            (color, stamp, row_id),
         )
 
 

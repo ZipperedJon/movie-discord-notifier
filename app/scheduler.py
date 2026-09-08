@@ -11,8 +11,8 @@ import asyncio
 import logging
 import time
 
-from . import discord, store, tmdb, updater
-from .config import SCHEDULER_INTERVAL_SECONDS
+from . import colors, discord, store, tmdb, updater
+from .config import SCHEDULER_INTERVAL_SECONDS, poster_url
 from .db import get_settings
 
 log = logging.getLogger("scheduler")
@@ -46,6 +46,26 @@ async def run_once() -> None:
             log.info("Posted showing reminder for %s", showing["title"])
         except discord.DiscordError as exc:
             log.warning("Showing reminder for %s failed: %s", showing["title"], exc)
+
+
+async def resync_accent_colors() -> None:
+    """Recompute stored accent colours after the mode changes in Settings.
+
+    A few rows per pass, tracked per row, so it is resumable and cannot stall on
+    one bad poster. Only affects what gets posted from now on — a post already
+    on Discord keeps its old bar until it is re-posted or edited.
+    """
+    mode = get_settings().get("accent_color_mode") or colors.DEFAULT_MODE
+    if mode not in colors.MODES:
+        mode = colors.DEFAULT_MODE
+    stamp = f"{mode}:{colors.ALGO}"
+
+    for row in store.rows_with_stale_color(stamp, limit=5):
+        color = await colors.poster_color_from_url(poster_url(row["poster_path"], "w185"), mode)
+        # Stamp even when extraction failed, so one unreadable poster is not
+        # retried on every pass forever.
+        store.set_accent_color(row["table"], row["id"], color, stamp)
+        log.info("Recoloured %s (%s) -> %s", row["title"], mode, colors.to_hex(color))
 
 
 async def backfill_release_dates() -> None:
@@ -102,6 +122,13 @@ async def loop() -> None:
             raise
         except Exception:
             log.exception("Release-date backfill failed")
+
+        try:
+            await resync_accent_colors()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("Accent colour resync failed")
 
         try:
             await maybe_auto_update()
