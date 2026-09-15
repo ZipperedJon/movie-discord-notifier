@@ -8,6 +8,7 @@ follow-up for the same movie — the trailer, the reminder — is sent with
 """
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -104,6 +105,26 @@ def resolve_webhook(kind: str) -> tuple[str, bool]:
     return url, is_thread
 
 
+# Discord IDs are snowflakes. Pulling the digit runs out of whatever was pasted
+# is forgiving about commas, spaces, newlines and stray text.
+_SNOWFLAKE = re.compile(r"\d{15,25}")
+MAX_FORUM_TAGS = 5  # Discord's limit per forum post
+
+
+def parse_tags(raw: str | None) -> list[str]:
+    return _SNOWFLAKE.findall(raw or "")[:MAX_FORUM_TAGS]
+
+
+def forum_tags(kind: str) -> list[str]:
+    """Tag IDs for this kind of post.
+
+    Not shared between kinds even when both use the same webhook: the whole
+    point is that ticket posts and movie posts carry different tags.
+    """
+    key = "tickets_forum_tags" if kind == "tickets" else "upcoming_forum_tags"
+    return parse_tags(get_settings().get(key))
+
+
 async def send(
     kind: str,
     *,
@@ -113,6 +134,7 @@ async def send(
     avatar_url: str | None = None,
     thread_name: str | None = None,
     thread_id: str | None = None,
+    applied_tags: list[str] | None = None,
 ) -> dict[str, Any]:
     """Post one message. Returns {'thread_id', 'message_id'} for the created message.
 
@@ -137,6 +159,10 @@ async def send(
     elif is_thread and thread_name:
         # Forum / media channels require a thread name — this opens the post.
         payload["thread_name"] = thread_name[:100]
+        # Tags can only be set as the thread is created; a webhook cannot
+        # retag an existing post afterwards.
+        if applied_tags:
+            payload["applied_tags"] = [str(t) for t in applied_tags[:MAX_FORUM_TAGS]]
 
     async with httpx.AsyncClient(timeout=20) as client:
         resp = await client.post(url, json=payload, params=params)
@@ -228,6 +254,11 @@ def _explain(resp: httpx.Response, is_thread: bool) -> str:
                 "  — this looks like a Forum/Media channel; try checking "
                 "'This is a threads channel' in Settings."
             )
+    if "applied_tags" in detail or "tags" in detail.lower():
+        detail += (
+            "  — check the forum tag IDs in Settings. They must be tags that exist "
+            "on THIS forum channel; an ID from another forum is rejected."
+        )
     if resp.status_code == 404:
         detail += "  — the webhook URL may have been deleted or mistyped."
     return detail
@@ -341,6 +372,7 @@ async def post_ticket_release(
         avatar_url=poster_url(release.get("poster_path"), "w185"),
         thread_name=title,
         thread_id=release.get("thread_id") if reuse_thread else None,
+        applied_tags=forum_tags("tickets"),
     )
     result["trailer_message_id"] = None
     if release.get("trailer_url"):
@@ -439,6 +471,7 @@ async def post_upcoming(
         avatar_url=poster_url(showing.get("poster_path"), "w185"),
         thread_name=title,
         thread_id=showing.get("thread_id") if reuse_thread else None,
+        applied_tags=forum_tags("upcoming"),
     )
     result["trailer_message_id"] = None
     if showing.get("trailer_url"):
@@ -549,4 +582,5 @@ async def post_test(kind: str) -> dict[str, Any]:
         ),
         username="Movie Discord Notifier",
         thread_name="Webhook test",
+        applied_tags=forum_tags(kind),
     )

@@ -287,6 +287,8 @@ class SettingsIn(BaseModel):
     upcoming_use_primary: bool = True
     upcoming_webhook_url: str = ""
     upcoming_is_thread: bool = False
+    tickets_forum_tags: str = ""
+    upcoming_forum_tags: str = ""
     auto_update: bool = True
     update_interval_hours: int = Field(default=6, ge=1, le=168)
     accent_color_mode: str = colors.DEFAULT_MODE

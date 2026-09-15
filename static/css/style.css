@@ -100,6 +100,13 @@ input::placeholder { color: #6b7078; }
 /* inline-flex + fit-content, not flex: a block-level <label> spans the whole
    row, so empty space beside it — next to the date field, say — still toggles
    the box. This keeps the hit area to the checkbox and its own text. */
+/* Forum tag inputs sit under their webhook, indented to read as a sub-setting. */
+.tag-field {
+  margin: 10px 0 4px; padding: 12px 14px;
+  background: var(--bg-3); border: 1px solid var(--line); border-radius: 8px;
+}
+.tag-field input { font-family: ui-monospace, Consolas, monospace; font-size: 13.5px; }
+
 /* The time half of a date-only drop is still editable, just not meaningful. */
 input.time-muted { color: var(--muted); border-style: dashed; }
 

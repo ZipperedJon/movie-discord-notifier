@@ -25,6 +25,18 @@
         <small>Check for a Forum or Media channel. Each post opens a new thread named after the movie.</small>
       </span>
     </label>
+    <div class="tag-field" id="tickets-tag-field">
+      <div class="field" style="margin-bottom:6px">
+        <label for="tickets_forum_tags">Forum tag for ticket posts</label>
+        <input type="text" id="tickets_forum_tags" placeholder="e.g. 1122334455667788990"
+               inputmode="numeric" autocomplete="off"
+               value="{{ settings.tickets_forum_tags }}">
+      </div>
+      <p class="hint" style="margin:0">
+        Tag IDs, comma separated if you want more than one (Discord allows up to 5).
+        <a href="#" data-taghelp>How do I find a tag ID?</a>
+      </p>
+    </div>
     <div class="actions">
       <button type="button" class="secondary" id="test-tickets">Send test message</button>
     </div>
@@ -53,10 +65,51 @@
         </span>
       </label>
     </div>
+    <div class="tag-field" id="upcoming-tag-field">
+      <div class="field" style="margin-bottom:6px">
+        <label for="upcoming_forum_tags">Forum tag for movie posts</label>
+        <input type="text" id="upcoming_forum_tags" placeholder="e.g. 9988776655443322110"
+               inputmode="numeric" autocomplete="off"
+               value="{{ settings.upcoming_forum_tags }}">
+      </div>
+      <p class="hint" style="margin:0">
+        Set separately from the ticket tag, even when both posts go to the same forum —
+        that is the point. <a href="#" data-taghelp>How do I find a tag ID?</a>
+      </p>
+    </div>
     <div class="actions">
       <button type="button" class="secondary" id="test-upcoming">Send test message</button>
     </div>
   </div>
+
+<dialog class="modal" id="taghelp-modal">
+  <div class="modal-head">
+    <h3>🏷️ Finding a forum tag ID</h3>
+  </div>
+  <div class="modal-body">
+    <p class="hint">
+      Turn on <strong>Developer Mode</strong> first: Discord → Settings → Advanced →
+      Developer Mode.
+    </p>
+    <p class="hint">
+      Then open your forum channel, right-click the tag in the tag bar along the top
+      (or in the tag list when creating a post) and choose <strong>Copy Tag ID</strong>.
+      Paste it here.
+    </p>
+    <p class="hint">
+      If your Discord build has no “Copy Tag ID”, post once in the forum by hand with
+      the tag applied, then open that post in the browser client — the tag ID appears in
+      the address bar as <code>?tag=…</code> when you filter the forum by it.
+    </p>
+    <p class="hint" style="color:var(--amber)">
+      Tags are per-channel. An ID from a different forum will be rejected, and the
+      <strong>Send test message</strong> button will tell you so.
+    </p>
+  </div>
+  <div class="modal-foot">
+    <button type="button" class="secondary" data-close-taghelp>Close</button>
+  </div>
+</dialog>
 
   <div class="card">
     <h3>🔑 TMDB API key</h3>
@@ -163,11 +216,27 @@
 <script>
 const $ = (id) => document.getElementById(id);
 
+// Forum tags only exist on Forum/Media channels, so only offer the field when
+// the post will actually open a thread. An "upcoming" post reusing the primary
+// webhook lands in the primary channel, so that is the flag that decides it.
 function syncUpcomingFields() {
-  $('upcoming-fields').style.display = $('upcoming_use_primary').checked ? 'none' : '';
+  const usePrimary = $('upcoming_use_primary').checked;
+  $('upcoming-fields').style.display = usePrimary ? 'none' : '';
+  $('tickets-tag-field').style.display = $('tickets_is_thread').checked ? '' : 'none';
+  const upcomingIsForum = usePrimary
+    ? $('tickets_is_thread').checked
+    : $('upcoming_is_thread').checked;
+  $('upcoming-tag-field').style.display = upcomingIsForum ? '' : 'none';
 }
-$('upcoming_use_primary').addEventListener('change', syncUpcomingFields);
+['upcoming_use_primary', 'tickets_is_thread', 'upcoming_is_thread'].forEach((id) =>
+  $(id).addEventListener('change', syncUpcomingFields));
 syncUpcomingFields();
+
+const tagHelp = $('taghelp-modal');
+document.querySelectorAll('[data-taghelp]').forEach((a) =>
+  a.addEventListener('click', (e) => { e.preventDefault(); tagHelp.showModal(); }));
+tagHelp.querySelector('[data-close-taghelp]')
+  .addEventListener('click', () => tagHelp.close());
 
 $('toggle-key').addEventListener('click', () => {
   const field = $('tmdb_api_key');
@@ -184,6 +253,8 @@ function collect() {
     upcoming_use_primary: $('upcoming_use_primary').checked,
     upcoming_webhook_url: $('upcoming_webhook_url').value.trim(),
     upcoming_is_thread: $('upcoming_is_thread').checked,
+    tickets_forum_tags: $('tickets_forum_tags').value.trim(),
+    upcoming_forum_tags: $('upcoming_forum_tags').value.trim(),
     auto_update: $('auto_update').checked,
     update_interval_hours: Number($('update_interval_hours').value) || 6,
     accent_color_mode: colorMode,

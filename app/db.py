@@ -96,6 +96,9 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "upcoming_use_primary": True,
     "upcoming_webhook_url": "",
     "upcoming_is_thread": False,
+    # Forum tag IDs applied when a post opens a new thread. Comma separated.
+    "tickets_forum_tags": "",
+    "upcoming_forum_tags": "",
     "auto_update": True,
     "update_interval_hours": 6,
     "last_update_check": "",

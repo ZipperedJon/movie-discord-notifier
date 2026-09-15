@@ -184,6 +184,21 @@ this app only ever posts, a webhook covers it. A bot would only be worth it if y
 wanted interactivity: reaction/button RSVPs, slash commands, or claiming a spare ticket
 by clicking.
 
+## Forum tags
+
+If you post to a Forum channel, each post can be tagged automatically — ticket drops
+with your **Tickets** tag, movie nights with your **Movie** tag. Set the tag IDs in
+Settings, under each webhook.
+
+A webhook cannot read a forum's tag list (that needs a bot token), so the IDs are
+entered by hand once. With Developer Mode on, right-click the tag in the forum's tag bar
+→ **Copy Tag ID**. Settings has a "How do I find a tag ID?" link with the details.
+
+Tags are applied as the post is created, which is the only moment a webhook can set
+them — so an existing post cannot be retagged, though re-posting it will tag the new
+one. Tags are also per-channel: an ID from a different forum is rejected, and **Send
+test message** tells you so. Multiple tags work, comma separated, up to Discord's five.
+
 ## Editing a post after it's up
 
 Every saved entry has an **Edit** button. Change the time, theater, spare tickets,
