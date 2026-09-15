@@ -100,6 +100,9 @@ input::placeholder { color: #6b7078; }
 /* inline-flex + fit-content, not flex: a block-level <label> spans the whole
    row, so empty space beside it — next to the date field, say — still toggles
    the box. This keeps the hit area to the checkbox and its own text. */
+/* The time half of a date-only drop is still editable, just not meaningful. */
+input.time-muted { color: var(--muted); border-style: dashed; }
+
 .checkbox {
   display: inline-flex; align-items: flex-start; gap: 9px;
   margin: 10px 0; cursor: pointer;

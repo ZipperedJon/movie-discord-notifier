@@ -17,8 +17,14 @@
 
   <div class="row" style="margin-top:16px">
     <div class="field">
-      <label for="drop-at">Tickets drop at</label>
+      <label for="drop-at">Tickets drop at <span id="drop-hint" style="text-transform:none;font-weight:400"></span></label>
       <input type="datetime-local" id="drop-at">
+      <label class="checkbox" style="margin-top:8px">
+        <input type="checkbox" id="time-unknown">
+        <span class="cb-text">Only the date is known
+          <small>Posts the day and says the time is still to be confirmed.</small>
+        </span>
+      </label>
     </div>
     <div class="field">
       <label for="trailer-url">Trailer URL (auto-filled from TMDB)</label>
@@ -79,7 +85,10 @@
         {% if r.thread_id %}<span class="badge posted">In thread</span>{% endif %}
         {% if r.reminded_at %}<span class="badge posted">Drop ping sent</span>{% endif %}
       </h4>
-      <div class="e-meta">Tickets drop <strong data-when="{{ r.drop_at }}"></strong></div>
+      <div class="e-meta">Tickets drop
+        <strong {% if r.time_known %}data-when="{{ r.drop_at }}"{% else %}data-when-date="{{ r.drop_at }}"{% endif %}></strong>
+        {% if not r.time_known %}<span class="badge pending">Time TBC</span>{% endif %}
+      </div>
       <div class="e-meta">{{ r.genres or '—' }}</div>
       {% if r.trailer_url %}<div class="e-meta"><a href="{{ r.trailer_url }}" target="_blank" rel="noopener">▶ Trailer</a></div>{% endif %}
     </div>
@@ -119,6 +128,14 @@ document.querySelectorAll('[data-when]').forEach((el) => {
   el.textContent = `${epochToLocalString(epoch)} (${relativeTime(epoch)})`;
 });
 
+// Date-only drops: never show an hour nobody has confirmed.
+document.querySelectorAll('[data-when-date]').forEach((el) => {
+  const epoch = Number(el.dataset.whenDate);
+  const date = new Date(epoch * 1000).toLocaleDateString(undefined,
+    { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+  el.textContent = `${date} (${relativeTime(epoch)})`;
+});
+
 new SortableList({
   select: 'sort-releases',
   container: 'release-list',
@@ -134,16 +151,34 @@ $('reset-btn').addEventListener('click', () => {
   $('drop-at').value = defaultDateTime(24);
 });
 
+// With the time unknown the hour on screen is meaningless, so say so and stop
+// offering a ping that would fire at an invented moment.
+function syncTimeKnown() {
+  const unknown = $('time-unknown').checked;
+  $('drop-hint').textContent = unknown ? '(only the date is used)' : '';
+  $('drop-at').classList.toggle('time-muted', unknown);
+  $('remind').disabled = unknown;
+  $('remind').closest('.checkbox').style.opacity = unknown ? 0.5 : '';
+}
+$('time-unknown').addEventListener('change', syncTimeKnown);
+syncTimeKnown();
+
 $('create-btn').addEventListener('click', (e) => busy(e.target, 'Working…', async () => {
   if (!picker.movie) throw new Error('Pick a movie first.');
-  const dropAt = localToEpoch($('drop-at').value);
-  if (!dropAt) throw new Error('Choose the date and time tickets drop.');
+  const unknown = $('time-unknown').checked;
+  let dropAt = localToEpoch($('drop-at').value);
+  if (!dropAt) {
+    throw new Error(unknown ? 'Choose the date tickets drop.'
+                            : 'Choose the date and time tickets drop.');
+  }
+  if (unknown) dropAt = snapToLocalNoon(dropAt);
 
   const res = await api('POST', '/api/releases', {
     tmdb_id: picker.movie.tmdb_id,
     drop_at: dropAt,
+    time_known: !unknown,
     trailer_url: $('trailer-url').value.trim() || null,
-    remind: $('remind').checked,
+    remind: $('remind').checked && !unknown,
     post_now: $('post-now').checked,
   });
 

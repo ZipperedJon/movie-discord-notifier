@@ -498,6 +498,7 @@ async def api_delete_theater(theater_id: int):
 class ReleaseIn(BaseModel):
     tmdb_id: int
     drop_at: int                    # unix epoch seconds, sent by the browser
+    time_known: bool = True         # False when only the date has been announced
     trailer_url: str | None = None  # overridable; otherwise pulled from TMDB
     remind: bool = True
     post_now: bool = True
@@ -515,6 +516,7 @@ async def api_create_release(payload: ReleaseIn):
     record = {
         **movie,
         "drop_at": payload.drop_at,
+        "time_known": int(payload.time_known),
         "remind": int(payload.remind),
         "trailer_url": await _resolve_trailer(payload.trailer_url, movie),
         "accent_color": await colors.poster_color_from_url(
@@ -565,6 +567,7 @@ async def api_update_release(release_id: int, payload: ReleaseIn):
     updates = {
         **movie,
         "drop_at": payload.drop_at,
+        "time_known": int(payload.time_known),
         "remind": int(payload.remind),
         "trailer_url": await _resolve_trailer(payload.trailer_url, movie),
         # Only re-derive the colour when the poster actually changed.

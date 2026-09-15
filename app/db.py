@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS ticket_releases (
     trailer_url   TEXT,
     accent_color  INTEGER,                -- average poster colour, embed sidebar
     drop_at       INTEGER NOT NULL,       -- unix epoch seconds
+    time_known    INTEGER NOT NULL DEFAULT 1,  -- 0 = date only, time still TBC
     thread_id     TEXT,                   -- forum thread Discord created for this post
     message_id    TEXT,
     posted_at     TEXT,
@@ -142,6 +143,9 @@ MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     # changing the mode in Settings can recompute exactly the stale rows.
     ("showings", "color_mode", "TEXT"),
     ("ticket_releases", "color_mode", "TEXT"),
+    # 0 when only the date is known — the post then shows the day and says the
+    # time is still to be confirmed.
+    ("ticket_releases", "time_known", "INTEGER NOT NULL DEFAULT 1"),
 )
 
 

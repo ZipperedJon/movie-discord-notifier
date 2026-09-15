@@ -290,7 +290,13 @@ def build_ticket_release(release: dict[str, Any], *, heading: str | None = None)
     lines = ["🎟️__**Ticket Info**__"]
     if heading:
         lines.append(heading)
-    lines.append(f"Tickets drop: {ts_with_relative(release['drop_at'])}")
+    if release.get("time_known", 1):
+        lines.append(f"Tickets drop: {ts_with_relative(release['drop_at'])}")
+    else:
+        # Only the day is known. Style D is the date with no time, so the post
+        # cannot imply an hour nobody has confirmed yet.
+        lines.append(f"Tickets drop: {ts(release['drop_at'], 'D')} ({ts(release['drop_at'], 'R')})")
+        lines.append("⏳ *Time unknown — will update if found.*")
     lines.append("🎬__**Movie Info**__")
 
     if release.get("tagline"):

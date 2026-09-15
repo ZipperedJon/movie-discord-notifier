@@ -55,6 +55,10 @@ def _fold(line: str) -> list[str]:
     return [out[0]] + [" " + part for part in out[1:]]
 
 
+def _date_only(epoch: int | float) -> str:
+    return datetime.fromtimestamp(int(epoch), tz=timezone.utc).strftime("%Y%m%d")
+
+
 def _event(
     *,
     uid: str,
@@ -65,15 +69,22 @@ def _event(
     location: str | None = None,
     url: str | None = None,
     alarm_minutes: int | None = None,
+    all_day: bool = False,
 ) -> list[str]:
     lines = [
         "BEGIN:VEVENT",
         f"UID:{uid}",
         f"DTSTAMP:{_stamp(datetime.now(tz=timezone.utc).timestamp())}",
-        f"DTSTART:{_stamp(start)}",
-        f"DTEND:{_stamp(end)}",
-        f"SUMMARY:{_escape(summary)}",
     ]
+    if all_day:
+        # RFC 5545 §3.6.1: a whole-day event uses DATE values, and DTEND is the
+        # day *after* the last one, so a single day ends on the following date.
+        lines.append(f"DTSTART;VALUE=DATE:{_date_only(start)}")
+        lines.append(f"DTEND;VALUE=DATE:{_date_only(start + 86400)}")
+    else:
+        lines.append(f"DTSTART:{_stamp(start)}")
+        lines.append(f"DTEND:{_stamp(end)}")
+    lines.append(f"SUMMARY:{_escape(summary)}")
     if description:
         lines.append(f"DESCRIPTION:{_escape(description)}")
     if location:
@@ -131,10 +142,16 @@ def showing_event(showing: dict[str, Any]) -> list[str]:
 
 
 def release_event(release: dict[str, Any]) -> list[str]:
-    """Tickets going on sale is a moment, so give it a short block."""
+    """Tickets going on sale is a moment, so give it a short block.
+
+    Unless the time is not known yet, in which case it becomes an all-day entry —
+    a 15 minute block at an hour nobody confirmed would be a lie.
+    """
     start = int(release["drop_at"])
 
     body = []
+    if not release.get("time_known", 1):
+        body.append("Time unknown — will update if found.")
     if release.get("genres"):
         body.append(release["genres"])
     if release.get("release_date"):
@@ -149,7 +166,9 @@ def release_event(release: dict[str, Any]) -> list[str]:
         summary=f"🎟️ Tickets on sale: {release['title']}",
         description="\n".join(body) or None,
         url=f"https://www.themoviedb.org/movie/{release['tmdb_id']}",
-        alarm_minutes=30 if release.get("remind") else None,
+        # An all-day entry has no meaningful "30 minutes before".
+        alarm_minutes=30 if (release.get("remind") and release.get("time_known", 1)) else None,
+        all_day=not release.get("time_known", 1),
     )
 
 

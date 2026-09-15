@@ -31,8 +31,14 @@
 
   <div class="row" style="margin-top:16px">
     <div class="field">
-      <label for="drop-at">Tickets drop at</label>
+      <label for="drop-at">Tickets drop at <span id="drop-hint" style="text-transform:none;font-weight:400"></span></label>
       <input type="datetime-local" id="drop-at">
+      <label class="checkbox" style="margin-top:8px">
+        <input type="checkbox" id="time-unknown" {{ '' if release.time_known else 'checked' }}>
+        <span class="cb-text">Only the date is known
+          <small>Untick once the time is announced, then save to update the post.</small>
+        </span>
+      </label>
     </div>
     <div class="field">
       <label for="trailer-url">Trailer URL</label>
@@ -99,15 +105,31 @@ const picker = new MoviePicker({
 
 $('drop-at').value = epochToInputValue(RELEASE.drop_at);
 
+function syncTimeKnown() {
+  const unknown = $('time-unknown').checked;
+  $('drop-hint').textContent = unknown ? '(only the date is used)' : '';
+  $('drop-at').classList.toggle('time-muted', unknown);
+  $('remind').disabled = unknown;
+  $('remind').closest('.checkbox').style.opacity = unknown ? 0.5 : '';
+}
+$('time-unknown').addEventListener('change', () => { syncTimeKnown(); dirty.mark(); });
+syncTimeKnown();
+
 $('save-btn').addEventListener('click', (e) => busy(e.target, 'Saving…', async () => {
-  const dropAt = localToEpoch($('drop-at').value);
-  if (!dropAt) throw new Error('Choose the date and time tickets drop.');
+  const unknown = $('time-unknown').checked;
+  let dropAt = localToEpoch($('drop-at').value);
+  if (!dropAt) {
+    throw new Error(unknown ? 'Choose the date tickets drop.'
+                            : 'Choose the date and time tickets drop.');
+  }
+  if (unknown) dropAt = snapToLocalNoon(dropAt);
 
   const res = await api('PUT', `/api/releases/${RELEASE.id}`, {
     tmdb_id: picker.movie ? picker.movie.tmdb_id : RELEASE.tmdb_id,
     drop_at: dropAt,
+    time_known: !unknown,
     trailer_url: $('trailer-url').value.trim() || null,
-    remind: $('remind').checked,
+    remind: $('remind').checked && !unknown,
     post_now: $('post-now').checked,
     force_repost: Boolean($('force-repost') && $('force-repost').checked),
   });

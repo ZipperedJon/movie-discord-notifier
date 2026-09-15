@@ -101,7 +101,7 @@ def delete_theater(theater_id: int) -> None:
 RELEASE_FIELDS = (
     "tmdb_id", "title", "tagline", "overview", "release_date", "genres", "studios",
     "budget", "poster_path", "backdrop_path", "trailer_url", "accent_color", "color_mode",
-    "drop_at", "remind",
+    "drop_at", "time_known", "remind",
 )
 
 

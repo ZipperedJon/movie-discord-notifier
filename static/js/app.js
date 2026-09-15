@@ -140,6 +140,21 @@ function defaultDateTime(offsetHours = 0) {
   return dateToInputValue(d);
 }
 
+/**
+ * Move an instant to midday on the same local date.
+ *
+ * For a date-only drop, Discord still needs an epoch, and it renders that in
+ * each viewer's own timezone. Anchoring at noon keeps everyone within about
+ * twelve hours on the same calendar day; midnight would flip the date for
+ * anyone even slightly west or east.
+ */
+function snapToLocalNoon(epoch) {
+  if (!epoch) return epoch;
+  const d = new Date(epoch * 1000);
+  d.setHours(12, 0, 0, 0);
+  return Math.floor(d.getTime() / 1000);
+}
+
 /** "155" -> "2h 35m", for showing a movie's runtime. */
 function formatRuntime(minutes) {
   if (!minutes) return null;

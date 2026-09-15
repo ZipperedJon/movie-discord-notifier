@@ -38,6 +38,22 @@ Each announcement is followed by a second message containing the bare trailer UR
 Discord renders a real YouTube player rather than a plain link. That follow-up carries
 the same movie name and poster avatar as the announcement, so the pair reads as one post.
 
+### When you only know the day
+
+Studios often announce the date before the hour. Tick **Only the date is known** on a
+ticket release and the post shows the day with a note instead of an invented time:
+
+```
+🎟️ Ticket Info
+Tickets drop: 16 September 2026 (in 3 days)
+⏳ Time unknown — will update if found.
+```
+
+Untick it once the time is announced, set the real time, and save — the existing post
+is edited in place. While the time is unknown the "ping when tickets drop" reminder is
+switched off, since there is no moment to fire at, and the calendar entry becomes an
+all-day event rather than a block at an hour nobody confirmed.
+
 ### Finding a trailer
 
 Trailers come from TMDB, which is missing them for plenty of older or smaller films.
