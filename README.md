@@ -221,8 +221,19 @@ change them. So if an edit could only ever patch the body, a swapped movie would
 the old film's name and poster forever.
 
 Picking a different movie therefore ticks **Re-post instead of editing**: the old post
-(and its thread) is deleted and a fresh one goes up, so the name, avatar, thread title,
-embed and trailer all match the new movie. You can tick it by hand for the same movie
+is removed and a fresh one goes up, so the name, avatar, thread title, embed and
+trailer all match the new movie.
+
+In a **forum**, that old post is a whole thread, and Discord does not let a webhook
+delete a thread — only `DELETE /channels/{thread_id}` does that, which needs a bot
+token. So:
+
+- **With a bot token** (Settings → Bot token, optional) the old thread is deleted
+  outright and nothing is left behind.
+- **Without one** the old messages are deleted and you get a warning with a direct
+  link to the leftover thread, so removing it is one click.
+
+The token is used for nothing else; every other feature runs on the webhook alone. You can tick it by hand for the same movie
 too. The trade-off is that reactions and replies on the old thread go with it — leave
 it unticked to keep the thread and accept a stale name on the message.
 

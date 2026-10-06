@@ -130,6 +130,30 @@
   </div>
 
   <div class="card">
+    <h3>🤖 Bot token <span style="color:var(--muted);font-weight:400">(optional)</span></h3>
+    <p class="hint">
+      Only needed for one thing: deleting the old forum thread when you swap a movie and
+      the post is replaced. Discord does not let a webhook delete a thread, so without
+      this the old thread stays and you remove it by hand. Everything else works on the
+      webhook alone.
+    </p>
+    <div class="field">
+      <label for="discord_bot_token">Bot token</label>
+      <input type="password" id="discord_bot_token" autocomplete="off"
+             placeholder="Leave blank to skip this" value="{{ settings.discord_bot_token }}">
+    </div>
+    <p class="hint">
+      <a href="https://discord.com/developers/applications" target="_blank" rel="noopener">Discord Developer Portal</a>
+      → your application → <strong>Bot</strong> → Reset/Copy Token. Then invite the bot to
+      your server and give it <strong>Manage Threads</strong> on the forum.
+    </p>
+    <div class="actions">
+      <button type="button" class="secondary" id="toggle-bot">Show token</button>
+      <button type="button" class="secondary" id="test-bot">Test token</button>
+    </div>
+  </div>
+
+  <div class="card">
     <h3>🎨 Embed colour</h3>
     <p class="hint">
       The stripe down the left of every Discord post is taken from the movie's poster.
@@ -255,6 +279,7 @@ function collect() {
     upcoming_is_thread: $('upcoming_is_thread').checked,
     tickets_forum_tags: $('tickets_forum_tags').value.trim(),
     upcoming_forum_tags: $('upcoming_forum_tags').value.trim(),
+    discord_bot_token: $('discord_bot_token').value.trim(),
     auto_update: $('auto_update').checked,
     update_interval_hours: Number($('update_interval_hours').value) || 6,
     accent_color_mode: colorMode,
@@ -389,6 +414,23 @@ $('settings-form').addEventListener('submit', (e) => {
   busy($('save-btn'), 'Saving…', async () => {
     await api('PUT', '/api/settings', collect());
     toast('Settings saved.', 'ok');
+  });
+});
+
+$('toggle-bot').addEventListener('click', () => {
+  const field = $('discord_bot_token');
+  const showing = field.type === 'text';
+  field.type = showing ? 'password' : 'text';
+  $('toggle-bot').textContent = showing ? 'Show token' : 'Hide token';
+});
+
+// Needs the current value on the server, so save first.
+$('test-bot').addEventListener('click', (e) => {
+  busy(e.target, 'Testing…', async () => {
+    if (!$('discord_bot_token').value.trim()) throw new Error('Enter a bot token first.');
+    await api('PUT', '/api/settings', collect());
+    const res = await api('POST', '/api/settings/test-bot');
+    toast(res.message, 'ok', 8000);
   });
 });
 

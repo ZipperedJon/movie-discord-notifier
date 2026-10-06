@@ -289,6 +289,7 @@ class SettingsIn(BaseModel):
     upcoming_is_thread: bool = False
     tickets_forum_tags: str = ""
     upcoming_forum_tags: str = ""
+    discord_bot_token: str = ""
     auto_update: bool = True
     update_interval_hours: int = Field(default=6, ge=1, le=168)
     accent_color_mode: str = colors.DEFAULT_MODE
@@ -360,6 +361,18 @@ async def api_test_tmdb(payload: dict[str, str]):
     if not await tmdb.verify_key(key):
         raise HTTPException(400, "TMDB rejected that key.")
     return {"ok": True, "message": "TMDB key works."}
+
+
+@app.post("/api/settings/test-bot")
+async def api_test_bot():
+    """Confirm the bot token works and say which bot it is."""
+    me = await discord.bot_identity()
+    name = me.get("username") or "your bot"
+    return {
+        "ok": True,
+        "message": f"Connected as {name}. Make sure it is in your server with "
+                   f"Manage Threads on the forum.",
+    }
 
 
 @app.post("/api/settings/test-webhook/{kind}")

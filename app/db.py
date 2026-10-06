@@ -99,6 +99,9 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     # Forum tag IDs applied when a post opens a new thread. Comma separated.
     "tickets_forum_tags": "",
     "upcoming_forum_tags": "",
+    # Optional. Only used to delete an old forum thread when a post is replaced —
+    # webhook tokens cannot call the endpoint that does it.
+    "discord_bot_token": "",
     "auto_update": True,
     "update_interval_hours": 6,
     "last_update_check": "",

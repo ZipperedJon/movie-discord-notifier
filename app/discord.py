@@ -222,6 +222,90 @@ async def edit_message(
         )
 
 
+API_BASE = "https://discord.com/api/v10"
+_webhook_info_cache: dict[str, dict[str, Any]] = {}
+
+
+def bot_token() -> str:
+    return (get_settings().get("discord_bot_token") or "").strip()
+
+
+async def webhook_info(kind: str) -> dict[str, Any]:
+    """The webhook object, which carries guild_id and channel_id.
+
+    GET on the webhook URL needs no extra credentials — the token in the URL is
+    enough — and the guild id is what makes a jump link to a thread possible.
+    """
+    url, _ = resolve_webhook(kind)
+    if url in _webhook_info_cache:
+        return _webhook_info_cache[url]
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(url)
+        if resp.status_code == 200:
+            _webhook_info_cache[url] = resp.json()
+            return _webhook_info_cache[url]
+    except (httpx.HTTPError, ValueError):
+        log.warning("Could not read webhook details for %s", kind)
+    return {}
+
+
+async def thread_link(kind: str, thread_id: str | None) -> str | None:
+    if not thread_id:
+        return None
+    guild = (await webhook_info(kind)).get("guild_id")
+    return f"https://discord.com/channels/{guild}/{thread_id}" if guild else None
+
+
+async def delete_thread(thread_id: str) -> tuple[bool, str | None]:
+    """Delete a forum post outright. Needs a bot token; a webhook token cannot.
+
+    Returns (deleted, reason-it-failed).
+    """
+    token = bot_token()
+    if not token:
+        return False, "no bot token configured"
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            resp = await client.delete(
+                f"{API_BASE}/channels/{thread_id}",
+                headers={"Authorization": f"Bot {token}"},
+            )
+    except httpx.HTTPError as exc:
+        return False, f"could not reach Discord ({exc})"
+
+    if resp.status_code in (200, 204, 404):   # 404 = already gone
+        return True, None
+    if resp.status_code == 401:
+        return False, "the bot token was rejected"
+    if resp.status_code == 403:
+        return False, (
+            "the bot lacks permission — it needs to be in the server with "
+            "Manage Threads on that forum"
+        )
+    return False, f"Discord returned {resp.status_code}: {resp.text[:160]}"
+
+
+async def bot_identity() -> dict[str, Any]:
+    """Who the configured bot token belongs to. Raises DiscordError if unusable."""
+    token = bot_token()
+    if not token:
+        raise DiscordError("No bot token saved.")
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(
+            f"{API_BASE}/users/@me", headers={"Authorization": f"Bot {token}"}
+        )
+    if resp.status_code == 401:
+        raise DiscordError(
+            "Discord rejected that bot token. Copy it again from the Bot tab of your "
+            "application — it is not the client secret or the application ID."
+        )
+    if resp.status_code >= 400:
+        raise DiscordError(f"Discord returned {resp.status_code}: {resp.text[:200]}")
+    return resp.json()
+
+
 async def delete_message(kind: str, message_id: str, thread_id: str | None = None) -> bool:
     """Delete a message this webhook posted. True if it is gone (or already was).
 
@@ -544,19 +628,50 @@ async def _sync(
 
 
 async def _remove_old_post(kind: str, record: dict[str, Any]) -> str | None:
-    """Delete the previous announcement (and its trailer) before reposting."""
+    """Clear the previous announcement before a replacement goes up.
+
+    In a forum the old announcement is a whole thread, and deleting its starter
+    message does not reliably take the thread with it. Removing the post for
+    real means DELETE /channels/{thread_id}, which a webhook token has no access
+    to — hence the optional bot token. Without one, the messages are deleted and
+    the leftover thread is reported with a link so it is one click to tidy up.
+    """
     thread_id = record.get("thread_id")
 
+    # Plain text channel: there is no thread, so deleting the messages is the
+    # whole job.
+    if not thread_id:
+        if record.get("trailer_message_id"):
+            await delete_message(kind, record["trailer_message_id"])
+        if not await delete_message(kind, record["message_id"]):
+            return (
+                "The previous Discord message could not be deleted, so it may still be "
+                "there alongside the new one — remove it by hand if you don't want both."
+            )
+        return None
+
+    deleted, reason = await delete_thread(thread_id)
+    if deleted:
+        log.info("Deleted old forum thread %s", thread_id)
+        return None
+
+    # Best effort on the messages so the old thread is at least empty.
     if record.get("trailer_message_id"):
         await delete_message(kind, record["trailer_message_id"], thread_id)
+    await delete_message(kind, record["message_id"], thread_id)
 
-    ok = await delete_message(kind, record["message_id"], thread_id)
-    if not ok:
+    link = await thread_link(kind, thread_id)
+    where = f" ({link})" if link else ""
+    if reason == "no bot token configured":
         return (
-            "The previous Discord post could not be deleted, so it may still be there "
-            "alongside the new one — remove it by hand if you don't want both."
+            f"The new post is up, but Discord does not let a webhook delete the old "
+            f"forum thread{where} — add a bot token in Settings to have it removed "
+            f"automatically, or delete that thread yourself."
         )
-    return None
+    return (
+        f"The new post is up, but the old forum thread{where} could not be deleted: "
+        f"{reason}."
+    )
 
 
 async def sync_ticket_release(
