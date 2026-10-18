@@ -100,68 +100,92 @@
   <div class="preview" id="preview" style="display:none"></div>
 </div>
 
-<div class="list-head">
-  <h2>Saved upcoming movies</h2>
-  {% if showings | length > 1 %}
-  <div class="sort-box">
-    <label for="sort-showings">Sort by</label>
-    <!-- values are dataset keys of data-sk-* attributes on each row -->
-    <select id="sort-showings">
-      <option value="skWhen:asc"     data-numeric="1">Showtime — soonest first</option>
-      <option value="skWhen:desc"    data-numeric="1">Showtime — latest first</option>
-      <option value="skReleased:desc">Movie release — newest first</option>
-      <option value="skReleased:asc">Movie release — oldest first</option>
-      <option value="skTitle:asc">Title — A to Z</option>
-      <option value="skTitle:desc">Title — Z to A</option>
-      <option value="skTheater:asc">Theater</option>
-      <option value="skPeople:desc"  data-numeric="1">Most ticket holders</option>
-      <option value="skAdded:desc"   data-numeric="1">Recently added</option>
-    </select>
+{% macro showing_row(s, past=False) %}
+{% set going = s.attendees | rejectattr('dropped') | list %}
+{% set gone = s.attendees | selectattr('dropped') | list %}
+{# data-sk-* are sort keys. Deliberately NOT data-when: that attribute is
+   claimed by the timestamp renderer, which would overwrite this element. #}
+<div class="entry{{ ' is-past' if past }}" data-id="{{ s.id }}"
+     data-sk-when="{{ s.start_at }}"
+     data-sk-released="{{ s.release_date or '' }}"
+     data-sk-title="{{ s.title }}"
+     data-sk-theater="{{ s.theater_name or '' }}"
+     data-sk-people="{{ going | length }}"
+     data-sk-added="{{ s.id }}"
+     data-search="{{ (s.title ~ ' ' ~ (s.theater_name or '') ~ ' ' ~ (going | map(attribute='name') | join(' '))) | lower }}">
+  {% if s.poster_path %}<img src="{{ poster_url(s.poster_path, 'w185') }}" alt="">{% endif %}
+  <div class="e-body">
+    <h4>{{ s.title }}
+      {% if s.posted_at %}<span class="badge posted">Posted</span>
+      {% else %}<span class="badge pending">Not posted</span>{% endif %}
+      {% if s.thread_id %}<span class="badge posted">In thread</span>{% endif %}
+      {% if s.reminded_at %}<span class="badge posted">Reminder sent</span>{% endif %}
+    </h4>
+    <div class="e-meta"><strong data-when="{{ s.start_at }}"></strong></div>
+    {% if s.theater_name %}<div class="e-meta">📍 {{ s.theater_name }}{% if s.theater_address %}, {{ s.theater_address }}{% endif %}</div>{% endif %}
+    <div class="e-meta">👥
+      {% if going %}{{ going | map(attribute='name') | join(', ') }}{% else %}nobody yet{% endif %}
+      {% if gone %}<s>{{ gone | map(attribute='name') | join(', ') }}</s>{% endif %}
+      · 🎟️ {{ s.extra_tickets }} extra
+    </div>
   </div>
-  {% endif %}
+  <div class="e-actions">
+    <a class="btn secondary small" href="/upcoming/{{ s.id }}/edit">Edit</a>
+    <a class="btn secondary small" href="/upcoming/{{ s.id }}.ics">📅 Calendar</a>
+    <button class="small secondary" data-action="post">Post to Discord</button>
+    <button class="small danger" data-action="delete">Delete</button>
+  </div>
 </div>
+{% endmacro %}
+
+<div class="list-head">
+  <h2>Saved upcoming movies <span class="list-count" id="show-count" data-total="{{ (showings | length) + (past_showings | length) }}"></span></h2>
+  <div class="list-tools">
+    {% if showings or past_showings %}
+    <div class="search-box">
+      <input type="search" id="search-showings" placeholder="Search movies, theaters, people…"
+             aria-label="Search upcoming movies" autocomplete="off">
+    </div>
+    {% endif %}
+    {% if (showings | length) + (past_showings | length) > 1 %}
+    <div class="sort-box">
+      <label for="sort-showings">Sort by</label>
+      <select id="sort-showings">
+        <option value="skWhen:asc"     data-numeric="1">Showtime — soonest first</option>
+        <option value="skWhen:desc"    data-numeric="1">Showtime — latest first</option>
+        <option value="skReleased:desc">Movie release — newest first</option>
+        <option value="skReleased:asc">Movie release — oldest first</option>
+        <option value="skTitle:asc">Title — A to Z</option>
+        <option value="skTitle:desc">Title — Z to A</option>
+        <option value="skTheater:asc">Theater</option>
+        <option value="skPeople:desc"  data-numeric="1">Most ticket holders</option>
+        <option value="skAdded:desc"   data-numeric="1">Recently added</option>
+      </select>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="empty" id="show-no-match" hidden></div>
 
 {% if showings %}
 <div id="showing-list">
-  {% for s in showings %}
-  {% set going = s.attendees | rejectattr('dropped') | list %}
-  <!-- data-sk-* are sort keys. Deliberately NOT data-when: that attribute is
-       claimed by the timestamp renderer, which would overwrite this element. -->
-  <div class="entry" data-id="{{ s.id }}"
-       data-sk-when="{{ s.start_at }}"
-       data-sk-released="{{ s.release_date or '' }}"
-       data-sk-title="{{ s.title }}"
-       data-sk-theater="{{ s.theater_name or '' }}"
-       data-sk-people="{{ going | length }}"
-       data-sk-added="{{ s.id }}">
-    {% if s.poster_path %}<img src="{{ poster_url(s.poster_path, 'w185') }}" alt="">{% endif %}
-    <div class="e-body">
-      <h4>{{ s.title }}
-        {% if s.posted_at %}<span class="badge posted">Posted</span>
-        {% else %}<span class="badge pending">Not posted</span>{% endif %}
-        {% if s.thread_id %}<span class="badge posted">In thread</span>{% endif %}
-        {% if s.reminded_at %}<span class="badge posted">Reminder sent</span>{% endif %}
-      </h4>
-      <div class="e-meta"><strong data-when="{{ s.start_at }}"></strong></div>
-      {% if s.theater_name %}<div class="e-meta">📍 {{ s.theater_name }}{% if s.theater_address %}, {{ s.theater_address }}{% endif %}</div>{% endif %}
-      <div class="e-meta">👥
-        {% set gone = s.attendees | selectattr('dropped') | list %}
-        {% if going %}{{ going | map(attribute='name') | join(', ') }}{% else %}nobody yet{% endif %}
-        {% if gone %}<s>{{ gone | map(attribute='name') | join(', ') }}</s>{% endif %}
-        · 🎟️ {{ s.extra_tickets }} extra
-      </div>
-    </div>
-    <div class="e-actions">
-      <a class="btn secondary small" href="/upcoming/{{ s.id }}/edit">Edit</a>
-      <a class="btn secondary small" href="/upcoming/{{ s.id }}.ics">📅 Calendar</a>
-      <button class="small secondary" data-action="post">Post to Discord</button>
-      <button class="small danger" data-action="delete">Delete</button>
-    </div>
-  </div>
-  {% endfor %}
+  {% for s in showings %}{{ showing_row(s) }}{% endfor %}
 </div>
 {% else %}
-  <div class="empty">No upcoming movies yet.</div>
+  <div class="empty">
+    {% if past_showings %}Nothing upcoming — every movie night has already happened.
+    {% else %}No upcoming movies yet.{% endif %}
+  </div>
+{% endif %}
+
+{% if past_showings %}
+<details class="past-block">
+  <summary>Show {{ past_showings | length }} past movie night{{ 's' if past_showings | length != 1 }}</summary>
+  <div id="showing-list-past">
+    {% for s in past_showings %}{{ showing_row(s, past=True) }}{% endfor %}
+  </div>
+</details>
 {% endif %}
 
 <!-- ---------------- Modals ---------------- -->
@@ -247,10 +271,18 @@ document.querySelectorAll('[data-when]').forEach((el) => {
 
 new SortableList({
   select: 'sort-showings',
-  container: 'showing-list',
+  containers: ['showing-list', 'showing-list-past'],
   rowSelector: '.entry',
   storageKey: 'mdn.sort.showings',
   fallback: 'skWhen',
+});
+
+new FilterBox({
+  input: 'search-showings',
+  containers: ['showing-list', 'showing-list-past'],
+  rowSelector: '.entry',
+  empty: 'show-no-match',
+  counts: ['show-count'],
 });
 
 // Cancel buttons just close their dialog; openModal() resolves null on close.
@@ -364,7 +396,7 @@ $('create-btn').addEventListener('click', (e) => busy(e.target, 'Working…', as
   setTimeout(() => location.reload(), 900);
 }));
 
-document.querySelectorAll('.entry').forEach((entry) => {
+document.querySelectorAll('.entry[data-id]').forEach((entry) => {
   const id = entry.dataset.id;
   entry.querySelector('[data-action="post"]').addEventListener('click', (e) =>
     busy(e.target, 'Posting…', async () => {

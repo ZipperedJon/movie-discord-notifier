@@ -160,15 +160,36 @@ async def api_calendar_events():
 
 @app.get("/releases")
 async def page_releases(request: Request):
-    return _page(request, "releases.html", releases=store.list_releases())
+    # Same split as the dashboard: a drop that already happened should not sit
+    # at the top of "soonest first".
+    now = int(time.time())
+    everything = store.list_releases()
+    upcoming = sorted(
+        (r for r in everything if not _release_is_over(r, now)), key=lambda r: r["drop_at"]
+    )
+    past = sorted(
+        (r for r in everything if _release_is_over(r, now)),
+        key=lambda r: r["drop_at"], reverse=True,
+    )
+    return _page(request, "releases.html", releases=upcoming, past_releases=past)
 
 
 @app.get("/upcoming")
 async def page_upcoming(request: Request):
+    now = int(time.time())
+    everything = store.list_showings()
+    upcoming = sorted(
+        (s for s in everything if not _showing_is_over(s, now)), key=lambda s: s["start_at"]
+    )
+    past = sorted(
+        (s for s in everything if _showing_is_over(s, now)),
+        key=lambda s: s["start_at"], reverse=True,
+    )
     return _page(
         request,
         "upcoming.html",
-        showings=store.list_showings(),
+        showings=upcoming,
+        past_showings=past,
         people=store.list_people(),
         theaters=store.list_theaters(),
     )

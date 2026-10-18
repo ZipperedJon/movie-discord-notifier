@@ -294,6 +294,19 @@ td.right, th.right { text-align: right; }
 }
 .list-head h2 { margin: 0; }
 
+.list-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+.list-count { font-size: 13px; font-weight: 400; color: var(--muted); }
+
+.search-box { position: relative; display: flex; align-items: center; }
+.search-box input {
+  width: 230px; padding-left: 32px; font-size: 13.5px; padding-top: 7px; padding-bottom: 7px;
+}
+.search-box::before {
+  content: '🔎'; position: absolute; left: 10px; font-size: 12px;
+  pointer-events: none; opacity: .65;
+}
+
 .sort-box { display: flex; align-items: center; gap: 8px; }
 .sort-box label {
   font-size: 12px; letter-spacing: .4px; text-transform: uppercase;
@@ -557,6 +570,9 @@ body.nav-open .burger i:nth-child(3) { top: 6px; transform: rotate(-45deg); }
 
   /* Sort control drops under the heading and spans the width. */
   .list-head { gap: 8px; margin: 24px 0 10px; }
+  .list-tools { width: 100%; gap: 8px; }
+  .search-box { width: 100%; }
+  .search-box input { width: 100%; }
   .sort-box { width: 100%; }
   .sort-box select { flex: 1; min-width: 0; }
 

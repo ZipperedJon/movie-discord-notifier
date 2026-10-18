@@ -466,9 +466,14 @@ function openModal(dialogId, { onSubmit } = {}) {
  * data-* attributes on each row. The choice is remembered per list.
  */
 class SortableList {
-  constructor({ select, container, rowSelector, storageKey, fallback }) {
+  constructor({ select, container, containers, rowSelector, storageKey, fallback }) {
     this.select = document.getElementById(select);
-    this.container = document.getElementById(container);
+    // Several containers so one control can order the live list and the
+    // collapsed "past" list together.
+    this.containers = (containers || [container])
+      .map((id) => document.getElementById(id))
+      .filter(Boolean);
+    this.container = this.containers[0];
     this.rowSelector = rowSelector;
     this.storageKey = storageKey;
     this.fallback = fallback;
@@ -507,18 +512,76 @@ class SortableList {
   apply() {
     const [field, dir] = this.select.value.split(':');
     const numeric = this.select.selectedOptions[0]?.dataset.numeric === '1';
-    const rows = [...this.container.querySelectorAll(this.rowSelector)];
 
-    rows.sort((rowA, rowB) => {
-      const primary = SortableList.compare(
-        rowA.dataset[field], rowB.dataset[field], numeric, dir);
-      if (primary !== 0) return primary;
-      // Tie-break on a stable secondary key so equal values don't shuffle.
-      return SortableList.compare(
-        rowA.dataset[this.fallback], rowB.dataset[this.fallback], true, 'asc');
+    // Each container is sorted within itself: past entries stay in the past
+    // block rather than being interleaved with what is still to come.
+    for (const container of this.containers) {
+      const rows = [...container.querySelectorAll(this.rowSelector)];
+      rows.sort((rowA, rowB) => {
+        const primary = SortableList.compare(
+          rowA.dataset[field], rowB.dataset[field], numeric, dir);
+        if (primary !== 0) return primary;
+        // Tie-break on a stable secondary key so equal values don't shuffle.
+        return SortableList.compare(
+          rowA.dataset[this.fallback], rowB.dataset[this.fallback], true, 'asc');
+      });
+      for (const row of rows) container.appendChild(row);
+    }
+  }
+}
+
+/**
+ * Live text filter over already-rendered rows.
+ *
+ * Matches against each row's data-search blob, so a title, theater or genre all
+ * work. A match hiding inside the collapsed "past" block opens it, otherwise
+ * searching would look like it found nothing.
+ */
+class FilterBox {
+  constructor({ input, containers, rowSelector, empty, counts }) {
+    this.input = document.getElementById(input);
+    this.containers = containers.map((id) => document.getElementById(id)).filter(Boolean);
+    this.rowSelector = rowSelector;
+    this.empty = empty ? document.getElementById(empty) : null;
+    this.counts = (counts || []).map((id) => document.getElementById(id)).filter(Boolean);
+    if (!this.input || !this.containers.length) return;
+
+    this.input.addEventListener('input', () => this.apply());
+    this.input.addEventListener('search', () => this.apply());   // the native clear "x"
+    this.input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { this.input.value = ''; this.apply(); }
     });
+    this.apply();
+  }
 
-    for (const row of rows) this.container.appendChild(row);
+  apply() {
+    const needle = this.input.value.trim().toLowerCase();
+    let shown = 0;
+
+    for (const container of this.containers) {
+      let visibleHere = 0;
+      for (const row of container.querySelectorAll(this.rowSelector)) {
+        const hit = !needle || (row.dataset.search || '').includes(needle);
+        row.hidden = !hit;
+        if (hit) { visibleHere += 1; shown += 1; }
+      }
+      // Open a collapsed block that is hiding matches; close it again when the
+      // search is cleared, so the page returns to how it started.
+      const details = container.closest('details');
+      if (details && needle) details.open = visibleHere > 0;
+      else if (details && !needle) details.open = false;
+    }
+
+    for (const el of this.counts) {
+      const n = Number(el.dataset.total || 0);
+      el.textContent = needle ? `${shown} of ${n}` : '';
+    }
+    if (this.empty) {
+      this.empty.hidden = !(needle && shown === 0);
+      if (needle && shown === 0) {
+        this.empty.textContent = `Nothing matches “${this.input.value.trim()}”.`;
+      }
+    }
   }
 }
 

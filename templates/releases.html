@@ -51,59 +51,85 @@
   </div>
 </div>
 
-<div class="list-head">
-  <h2>Saved ticket releases</h2>
-  {% if releases | length > 1 %}
-  <div class="sort-box">
-    <label for="sort-releases">Sort by</label>
-    <select id="sort-releases">
-      <option value="skWhen:asc"     data-numeric="1">Drop time — soonest first</option>
-      <option value="skWhen:desc"    data-numeric="1">Drop time — latest first</option>
-      <option value="skReleased:desc">Movie release — newest first</option>
-      <option value="skReleased:asc">Movie release — oldest first</option>
-      <option value="skTitle:asc">Title — A to Z</option>
-      <option value="skTitle:desc">Title — Z to A</option>
-      <option value="skAdded:desc"   data-numeric="1">Recently added</option>
-    </select>
+{% macro release_row(r, past=False) %}
+<div class="entry{{ ' is-past' if past }}" data-id="{{ r.id }}"
+     data-sk-when="{{ r.drop_at }}"
+     data-sk-released="{{ r.release_date or '' }}"
+     data-sk-title="{{ r.title }}"
+     data-sk-added="{{ r.id }}"
+     data-search="{{ (r.title ~ ' ' ~ (r.genres or '')) | lower }}">
+  {% if r.poster_path %}<img src="{{ poster_url(r.poster_path, 'w185') }}" alt="">{% endif %}
+  <div class="e-body">
+    <h4>{{ r.title }}
+      {% if r.posted_at %}<span class="badge posted">Posted</span>
+      {% else %}<span class="badge pending">Not posted</span>{% endif %}
+      {% if r.thread_id %}<span class="badge posted">In thread</span>{% endif %}
+      {% if r.reminded_at %}<span class="badge posted">Drop ping sent</span>{% endif %}
+    </h4>
+    <div class="e-meta">Tickets drop
+      <strong {% if r.time_known %}data-when="{{ r.drop_at }}"{% else %}data-when-date="{{ r.drop_at }}"{% endif %}></strong>
+      {% if not r.time_known %}<span class="badge pending">Time TBC</span>{% endif %}
+    </div>
+    <div class="e-meta">{{ r.genres or '—' }}</div>
+    {% if r.trailer_url %}<div class="e-meta"><a href="{{ r.trailer_url }}" target="_blank" rel="noopener">▶ Trailer</a></div>{% endif %}
   </div>
-  {% endif %}
+  <div class="e-actions">
+    <a class="btn secondary small" href="/releases/{{ r.id }}/edit">Edit</a>
+    <a class="btn secondary small" href="/releases/{{ r.id }}.ics">📅 Calendar</a>
+    <button class="small secondary" data-action="post">Post to Discord</button>
+    <button class="small danger" data-action="delete">Delete</button>
+  </div>
 </div>
+{% endmacro %}
+
+<div class="list-head">
+  <h2>Saved ticket releases <span class="list-count" id="rel-count" data-total="{{ (releases | length) + (past_releases | length) }}"></span></h2>
+  <div class="list-tools">
+    {% if releases or past_releases %}
+    <div class="search-box">
+      <input type="search" id="search-releases" placeholder="Search movies…"
+             aria-label="Search ticket releases" autocomplete="off">
+    </div>
+    {% endif %}
+    {% if (releases | length) + (past_releases | length) > 1 %}
+    <div class="sort-box">
+      <label for="sort-releases">Sort by</label>
+      <select id="sort-releases">
+        <option value="skWhen:asc"     data-numeric="1">Drop time — soonest first</option>
+        <option value="skWhen:desc"    data-numeric="1">Drop time — latest first</option>
+        <option value="skReleased:desc">Movie release — newest first</option>
+        <option value="skReleased:asc">Movie release — oldest first</option>
+        <option value="skTitle:asc">Title — A to Z</option>
+        <option value="skTitle:desc">Title — Z to A</option>
+        <option value="skAdded:desc"   data-numeric="1">Recently added</option>
+      </select>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="empty" id="rel-no-match" hidden></div>
 
 {% if releases %}
 <div id="release-list">
-  {% for r in releases %}
-  <div class="entry" data-id="{{ r.id }}"
-       data-sk-when="{{ r.drop_at }}"
-       data-sk-released="{{ r.release_date or '' }}"
-       data-sk-title="{{ r.title }}"
-       data-sk-added="{{ r.id }}">
-    {% if r.poster_path %}<img src="{{ poster_url(r.poster_path, 'w185') }}" alt="">{% endif %}
-    <div class="e-body">
-      <h4>{{ r.title }}
-        {% if r.posted_at %}<span class="badge posted">Posted</span>
-        {% else %}<span class="badge pending">Not posted</span>{% endif %}
-        {% if r.thread_id %}<span class="badge posted">In thread</span>{% endif %}
-        {% if r.reminded_at %}<span class="badge posted">Drop ping sent</span>{% endif %}
-      </h4>
-      <div class="e-meta">Tickets drop
-        <strong {% if r.time_known %}data-when="{{ r.drop_at }}"{% else %}data-when-date="{{ r.drop_at }}"{% endif %}></strong>
-        {% if not r.time_known %}<span class="badge pending">Time TBC</span>{% endif %}
-      </div>
-      <div class="e-meta">{{ r.genres or '—' }}</div>
-      {% if r.trailer_url %}<div class="e-meta"><a href="{{ r.trailer_url }}" target="_blank" rel="noopener">▶ Trailer</a></div>{% endif %}
-    </div>
-    <div class="e-actions">
-      <a class="btn secondary small" href="/releases/{{ r.id }}/edit">Edit</a>
-      <a class="btn secondary small" href="/releases/{{ r.id }}.ics">📅 Calendar</a>
-      <button class="small secondary" data-action="post">Post to Discord</button>
-      <button class="small danger" data-action="delete">Delete</button>
-    </div>
-  </div>
-  {% endfor %}
+  {% for r in releases %}{{ release_row(r) }}{% endfor %}
 </div>
 {% else %}
-  <div class="empty">No ticket releases yet.</div>
+  <div class="empty">
+    {% if past_releases %}Nothing upcoming — every ticket drop has already happened.
+    {% else %}No ticket releases yet.{% endif %}
+  </div>
 {% endif %}
+
+{% if past_releases %}
+<details class="past-block">
+  <summary>Show {{ past_releases | length }} past ticket release{{ 's' if past_releases | length != 1 }}</summary>
+  <div id="release-list-past">
+    {% for r in past_releases %}{{ release_row(r, past=True) }}{% endfor %}
+  </div>
+</details>
+{% endif %}
+
 {% endblock %}
 
 {% block scripts %}
@@ -138,10 +164,18 @@ document.querySelectorAll('[data-when-date]').forEach((el) => {
 
 new SortableList({
   select: 'sort-releases',
-  container: 'release-list',
+  containers: ['release-list', 'release-list-past'],
   rowSelector: '.entry',
   storageKey: 'mdn.sort.releases',
   fallback: 'skWhen',
+});
+
+new FilterBox({
+  input: 'search-releases',
+  containers: ['release-list', 'release-list-past'],
+  rowSelector: '.entry',
+  empty: 'rel-no-match',
+  counts: ['rel-count'],
 });
 
 $('reset-btn').addEventListener('click', () => {
@@ -190,7 +224,7 @@ $('create-btn').addEventListener('click', (e) => busy(e.target, 'Working…', as
   setTimeout(() => location.reload(), 900);
 }));
 
-document.querySelectorAll('.entry').forEach((entry) => {
+document.querySelectorAll('.entry[data-id]').forEach((entry) => {
   const id = entry.dataset.id;
   entry.querySelector('[data-action="post"]').addEventListener('click', (e) =>
     busy(e.target, 'Posting…', async () => {

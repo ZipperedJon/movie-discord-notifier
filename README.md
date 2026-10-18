@@ -272,6 +272,18 @@ gets a *"Show N past…"* toggle. A movie you're currently sitting in still coun
 upcoming — it drops off the list once it has finished, not once it has started. The
 calendar keeps showing everything, past months included.
 
+## Finding things in the lists
+
+Both saved lists show **only what hasn't happened yet**, soonest first, with finished
+entries tucked into a *"Show N past…"* toggle — the same split the dashboard uses, so a
+drop from last month no longer sits at the top of "soonest first". A movie you're
+currently sitting in still counts as upcoming; it moves once it has finished.
+
+Next to the sort control is a **search box**. It filters as you type across the title,
+the theater and who has tickets, so "topanga" or a friend's name both work. If the only
+match is in the past block, that block opens itself rather than looking empty. Escape or
+the clear button resets it.
+
 ## Sorting the lists
 
 Both saved lists have a **Sort by** control. Upcoming movies sorts by showtime, the
